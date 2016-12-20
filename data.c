@@ -1032,6 +1032,7 @@ static int f2fs_read_data_page(struct file *file, struct page *page)
 {
 	struct inode *inode = page->mapping->host;
 	int ret = -EAGAIN;
+	printk("readpage\n");
 
 	trace_f2fs_readpage(page, DATA);
 
@@ -1048,6 +1049,7 @@ static int f2fs_read_data_pages(struct file *file,
 			struct list_head *pages, unsigned nr_pages)
 {
 	struct inode *inode = file->f_mapping->host;
+	printk("readpages\n");
 
 	/* If the file has inline data, skip readpages */
 	if (f2fs_has_inline_data(inode))
@@ -1137,6 +1139,7 @@ static int f2fs_write_data_page(struct page *page,
 		.page = page,
 		.encrypted_page = NULL,
 	};
+	//printk("f2fs_write_data_page fio=%p\n", &fio);
 
 	trace_f2fs_writepage(page, DATA);
 

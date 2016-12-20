@@ -277,6 +277,8 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 	memset(dedupe_info->dedupe_md, 0, dedupe_info->dedupe_size);
 	dedupe_info->dedupe_md_dirty_bitmap = kzalloc(dedupe_info->dedupe_bitmap_size, GFP_KERNEL);
 	dedupe_info->dedupe_segment_count = DEDUPE_SEGMENT_COUNT;
+	dedupe_info->dedupe_reli = vmalloc(DEDUPE_RELI_NUM * sizeof(dedupe_info->dedupe_reli));
+	memset(dedupe_info->dedupe_reli, 0, DEDUPE_RELI_NUM * sizeof(dedupe_info->dedupe_reli));
 #ifdef F2FS_BLOOM_FILTER
 	dedupe_info->bloom_filter_mask = (1<<(f2fs_dedupe_O_log2(dedupe_info->dedupe_block_count) + 10)) -1;
 	dedupe_info->bloom_filter = vmalloc((dedupe_info->bloom_filter_mask + 1) * sizeof(unsigned int));
@@ -295,6 +297,7 @@ void exit_dedupe_info(struct dedupe_info *dedupe_info)
 	vfree(dedupe_info->dedupe_md);
 	kfree(dedupe_info->dedupe_md_dirty_bitmap);
 	kfree(dedupe_info->dedupe_bitmap);
+	vfree(dedupe_info->dedupe_reli);
 #ifdef F2FS_REVERSE_ADDR
 	vfree(dedupe_info->reverse_addr);
 #endif
@@ -302,5 +305,37 @@ void exit_dedupe_info(struct dedupe_info *dedupe_info)
 #ifdef F2FS_BLOOM_FILTER
 	vfree(dedupe_info->bloom_filter);
 #endif
+}
+
+void f2fs_dedupe_reli_add1(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+	
+	while(cur->addr1 != 0 && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+		cur++;
+	
+	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	{
+		memcpy(cur->hash, hash, dedupe_info->digest_len);
+		cur->addr1 = addr;
+		printk("dedupe_reli add1 successed\n");
+		return;
+	}
+	else printk("dedupe_reli is full\n");
+}
+void f2fs_dedupe_reli_add2(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+
+	while(likely(memcmp(cur->hash, hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+		cur++;
+	
+	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	{
+		cur->addr2 = addr;
+		printk("dedupe_reli add2 successed\n");
+		return;
+	}
+	printk("dedupe_reli hash is not found\n");
 }
 

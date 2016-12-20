@@ -714,6 +714,7 @@ struct f2fs_io_info {
 	block_t blk_addr;	/* block address to be written */
 	struct page *page;	/* page to be written */
 	struct page *encrypted_page;	/* encrypted page */
+	block_t addr_dedup;
 };
 
 #define is_read_io(rw)	(((rw) & 1) == READ)
