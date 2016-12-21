@@ -1372,10 +1372,8 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	struct curseg_info *curseg;
 	bool direct_io = (type == CURSEG_DIRECT_IO);
 	u8 hash[16];
-	block_t addr_new;
-	int ref = 0;
 	struct dedupe* dedupe = NULL;
-	struct f2fs_io_info *fio = NULL;
+	struct f2fs_io_info *fio = container_of(new_blkaddr, struct f2fs_io_info, blk_addr);
 
 	type = direct_io ? CURSEG_WARM_DATA : type;
 
@@ -1396,6 +1394,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	{
 		*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 		f2fs_dedupe_add(hash, &sbi->dedupe_info, *new_blkaddr);
+		fio->addr_dedup = *new_blkaddr;
 		spin_lock(&sbi->stat_lock);
 		sbi->total_valid_block_count ++;
 		spin_unlock(&sbi->stat_lock);
@@ -1406,8 +1405,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 		dedupe->ref++;
 		set_dedupe_dirty(&sbi->dedupe_info, dedupe);
 		*new_blkaddr = dedupe->addr;
-		fio = container_of(new_blkaddr, struct f2fs_io_info, blk_addr);
-		fio->addr_dedup = dedupe->addr;
+		fio->addr_dedup = *new_blkaddr;
 		//spin_unlock(&sbi->dedupe_info.lock);
 
 		if (GET_SEGNO(sbi, old_blkaddr) != NULL_SEGNO)
@@ -1430,14 +1428,11 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 			}
 		}
 
-		ref = dedupe->ref;
 		if(unlikely(dedupe->ref == 5))
 		{
 			printk("write double\n");
-			addr_new = NEXT_FREE_BLKADDR(sbi, curseg);
-			*new_blkaddr = addr_new;
-			f2fs_dedupe_reli_add1(hash, &sbi->dedupe_info, addr_new);
-			sbi->dedupe_info.logical_blk_cnt++;
+			*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
+			f2fs_dedupe_reli_add1(hash, &sbi->dedupe_info, *new_blkaddr);
 			sbi->dedupe_info.physical_blk_cnt++;
 			spin_lock(&sbi->stat_lock);
 			sbi->total_valid_block_count ++;
@@ -1448,10 +1443,8 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 		if(unlikely(dedupe->ref == 10))
 		{
 			printk("write triple\n");
-			addr_new = NEXT_FREE_BLKADDR(sbi, curseg);
-			*new_blkaddr = addr_new;
-			f2fs_dedupe_reli_add2(hash, &sbi->dedupe_info, addr_new);
-			sbi->dedupe_info.logical_blk_cnt++;
+			*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
+			f2fs_dedupe_reli_add2(hash, &sbi->dedupe_info, *new_blkaddr);
 			sbi->dedupe_info.physical_blk_cnt++;
 			spin_lock(&sbi->stat_lock);
 			sbi->total_valid_block_count ++;
@@ -1484,9 +1477,7 @@ write_addr:
 	 * SIT information should be updated before segment allocation,
 	 * since SSR needs latest valid block information.
 	 */
-	if(unlikely(ref == 5 || ref == 10))
-		refresh_sit_entry_dedupe(sbi, old_blkaddr, addr_new);
-	else refresh_sit_entry_dedupe(sbi, old_blkaddr, *new_blkaddr);
+	refresh_sit_entry_dedupe(sbi, old_blkaddr, *new_blkaddr);
 
 	mutex_unlock(&sit_i->sentry_lock);
 

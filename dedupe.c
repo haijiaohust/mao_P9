@@ -6,6 +6,7 @@
 #include "dedupe.h"
 #include <linux/f2fs_fs.h>
 #include <linux/vmalloc.h>
+#include "f2fs.h"
 
 int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_info)
 {
@@ -154,6 +155,11 @@ int f2fs_dedupe_delete_addr(block_t addr, struct dedupe_info *dedupe_info)
 			}
 			else
 			{
+				if(unlikely(cur->ref == 4))
+					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 1);
+				if(unlikely(cur->ref == 9))
+					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 2);
+				
 				return cur->ref;
 			}
 		}
@@ -189,6 +195,11 @@ aa:
 			}
 			else
 			{
+				if(unlikely(cur->ref == 4))
+					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 1);
+				if(unlikely(cur->ref == 9))
+					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 2);
+				
 				return cur->ref;
 			}
 		}
@@ -338,4 +349,51 @@ void f2fs_dedupe_reli_add2(u8 hash[], struct dedupe_info *dedupe_info, block_t a
 	}
 	printk("dedupe_reli hash is not found\n");
 }
+
+int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+	struct f2fs_sb_info *sbi = container_of(dedupe_info, struct f2fs_sb_info, dedupe_info);
+
+	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+		cur++;
+
+	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	{
+		//printk("f2fs_dedupe_reli_del_addr\n");
+		//printk("%llx %u %u %d\n", be64_to_cpu(*(long long*)&cur->hash), cur->addr1, cur->addr2, del_type);
+		dedupe_info->physical_blk_cnt--;
+		switch(del_type)
+		{
+			case 1:
+				if(cur->addr2 != 0)
+					return -1;
+ 				else
+ 				{
+ 					invalidate_blocks(sbi, cur->addr1);
+					cur->addr1 = 0;
+					memset(cur->hash, 0, dedupe_info->digest_len);
+					printk("dedupe reli del addr1 successed\n");
+					return 0;
+ 				}
+			case 2:
+				if(cur->addr1 == 0)
+					return -1;
+				else
+				{
+					invalidate_blocks(sbi, cur->addr2);
+					cur->addr2 = 0;
+					printk("dedupe reli del addr2 successed!\n");
+					return 0;
+				}
+		}
+	}
+	else
+	{
+		printk("dedupe reli del hash not Found\n");
+		return -2;
+	}
+	return -3;
+}
+
 

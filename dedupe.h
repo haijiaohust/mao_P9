@@ -56,6 +56,7 @@ struct dedupe_info
 
 extern void f2fs_dedupe_reli_add1(u8 hash[], struct dedupe_info *dedupe_info, block_t addr);
 extern void f2fs_dedupe_reli_add2(u8 hash[], struct dedupe_info *dedupe_info, block_t addr);
+extern int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type);
 
 
 extern int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_info);
