@@ -54,6 +54,13 @@ static void f2fs_read_end_io(struct bio *bio, int err)
 			SetPageUptodate(page);
 			unlock_page(page);
 		}
+		else if(FS_COMPR_FL&F2FS_I(page->mapping->host)->i_flags \
+			&& S_ISREG(page->mapping->host->i_mode))
+		{
+			printk("f2fs read end io dedupe_reli\n");
+			f2fs_mpage_readpages(page->mapping, NULL, page, 1, 1);
+			continue;
+		}
 		else 
 		{
 			ClearPageUptodate(page);
