@@ -75,9 +75,7 @@ void init_f2fs_dedupe_bloom_filter(struct dedupe_info *dedupe_info)
 struct dedupe *f2fs_dedupe_search(u8 hash[], struct dedupe_info *dedupe_info)
 {
 	struct dedupe *c = &dedupe_info->dedupe_md[(*(unsigned int *)hash)%(dedupe_info->dedupe_block_count/64) * DEDUPE_PER_BLOCK*64],*cur;
-#ifdef F2FS_NO_HASH
 	c = dedupe_info->dedupe_md;
-#endif
 
 #ifdef F2FS_BLOOM_FILTER
 	if(f2fs_dedupe_bloom_filter(hash, dedupe_info)) return NULL;
@@ -103,6 +101,39 @@ struct dedupe *f2fs_dedupe_search(u8 hash[], struct dedupe_info *dedupe_info)
 	return NULL;
 }
 
+struct dedupe *f2fs_dedupe_search_by_addr(block_t addr, struct dedupe_info *dedupe_info)
+{
+	struct dedupe *cur, *c = dedupe_info->last_delete_dedupe;
+	
+	if(NEW_ADDR == addr) 
+		return NULL;
+
+#ifdef F2FS_REVERSE_ADDR
+	if(-1 == dedupe_info->reverse_addr[addr])
+		return NULL;
+	
+	cur = &dedupe_info->dedupe_md[dedupe_info->reverse_addr[addr]];
+	if(cur->ref)
+		return cur;
+	else
+		return NULL;
+#endif
+
+	for(cur=c; cur < dedupe_info->dedupe_md + dedupe_info->dedupe_block_count * DEDUPE_PER_BLOCK; cur++)
+	{
+		if(unlikely(cur->ref && addr == cur->addr))
+			return cur;
+	}
+	
+	for(cur = dedupe_info->dedupe_md; cur < c; cur++)
+	{
+		if(unlikely(cur->ref && addr == cur->addr))
+			return cur;
+	}
+	return NULL;
+}
+
+
 void set_dedupe_dirty(struct dedupe_info *dedupe_info, struct dedupe *dedupe)
 {
 	set_bit((dedupe - dedupe_info->dedupe_md)/DEDUPE_PER_BLOCK,  (long unsigned int *)dedupe_info->dedupe_md_dirty_bitmap);
@@ -110,112 +141,73 @@ void set_dedupe_dirty(struct dedupe_info *dedupe_info, struct dedupe *dedupe)
 
 int f2fs_dedupe_delete_addr(block_t addr, struct dedupe_info *dedupe_info)
 {
-	struct dedupe *cur,*c = dedupe_info->last_delete_dedupe;
+	struct dedupe *cur;
+	struct f2fs_sb_info *sbi = container_of(dedupe_info, struct f2fs_sb_info, dedupe_info);
 
 	spin_lock(&dedupe_info->lock);
-	if(NEW_ADDR == addr) return -1;
+	if(NEW_ADDR == addr)
+		return -1;
 
-#ifdef F2FS_REVERSE_ADDR
-	if(-1 == dedupe_info->reverse_addr[addr])
+	cur = f2fs_dedupe_search_by_addr(addr, dedupe_info);
+	if(!cur)
 	{
+		printk("f2fs_dedupe_search_by_addr not found\n");
 		return -1;
 	}
-	cur = &dedupe_info->dedupe_md[dedupe_info->reverse_addr[addr]];
-	if(cur->ref)
-	{
-		goto aa;
-	}
-	else
-	{
-		return -1;
-	}
-#endif
-
-	for(cur=c; cur < dedupe_info->dedupe_md + dedupe_info->dedupe_block_count * DEDUPE_PER_BLOCK; cur++)
-	{
-		if(unlikely(cur->ref && addr == cur->addr))
+	else{
+		cur->ref--;
+		dedupe_info->logical_blk_cnt--;
+		dedupe_info->last_delete_dedupe = cur;
+		set_dedupe_dirty(dedupe_info, cur);
+		if(0 == cur->ref)
 		{
-			cur->ref--;
-			dedupe_info->logical_blk_cnt--;
-			dedupe_info->last_delete_dedupe = cur;
-			set_dedupe_dirty(dedupe_info, cur);
-			if(0 == cur->ref)
-			{
 #ifdef F2FS_BLOOM_FILTER
-				int i;
-				unsigned int *pos = (unsigned int *)cur->hash;
-				for(i=0;i<dedupe_info->bloom_filter_hash_fun_count;i++)
-				{
-					dedupe_info->bloom_filter[*(pos++)&dedupe_info->bloom_filter_mask]--;
-				}
-#endif
-				cur->addr = 0;
-				dedupe_info->physical_blk_cnt--;
-				return 0;
-			}
-			else
+			int i;
+			unsigned int *pos = (unsigned int *)cur->hash;
+			for(i=0;i<dedupe_info->bloom_filter_hash_fun_count;i++)
 			{
-				if(unlikely(cur->ref == 4))
-					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 1);
-				if(unlikely(cur->ref == 9))
-					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 2);
-				
-				return cur->ref;
+				dedupe_info->bloom_filter[*(pos++)&dedupe_info->bloom_filter_mask]--;
 			}
+#endif
+			cur->addr = 0;
+			dedupe_info->physical_blk_cnt--;
+			
+#ifdef F2FS_REVERSE_ADDR
+			dedupe_info->reverse_addr[addr] = -1;
+#endif
+
+			return 0;
 		}
-	}
-	for(cur = dedupe_info->dedupe_md; cur < c; cur++)
-	{
-		if(unlikely(cur->ref && addr == cur->addr))
+		else
 		{
-#ifdef F2FS_REVERSE_ADDR
-aa:
-#endif
-			cur->ref--;
-			dedupe_info->logical_blk_cnt--;
-			dedupe_info->last_delete_dedupe = cur;
-			set_dedupe_dirty(dedupe_info, cur);
-			if(0 == cur->ref)
+			if(unlikely(cur->ref == 4 || cur->ref == 9))
 			{
-#ifdef F2FS_BLOOM_FILTER
-				int i;
-				unsigned int *pos = (unsigned int *)cur->hash;
-				for(i=0;i<dedupe_info->bloom_filter_hash_fun_count;i++)
+				switch(cur->ref)
 				{
-					dedupe_info->bloom_filter[*(pos++)&dedupe_info->bloom_filter_mask]--;
+					case 4:
+						f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 1);
+						break;
+					case 9:
+						f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 2);
 				}
-#endif
-				cur->addr = 0;
-				dedupe_info->physical_blk_cnt--;
-
-#ifdef F2FS_REVERSE_ADDR
-				dedupe_info->reverse_addr[addr] = -1;
-#endif
-				return 0;
+				spin_lock(&sbi->stat_lock);
+				sbi->total_valid_block_count--;
+				spin_unlock(&sbi->stat_lock);
 			}
-			else
-			{
-				if(unlikely(cur->ref == 4))
-					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 1);
-				if(unlikely(cur->ref == 9))
-					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 2);
 				
-				return cur->ref;
-			}
+			return cur->ref;
 		}
 	}
 	return -1;
 }
-
 
 int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
 {
 	int ret = 0;
 	int search_count = 0;
 	struct dedupe* cur = &dedupe_info->dedupe_md[(*(unsigned int *)hash)%(dedupe_info->dedupe_block_count/64) * DEDUPE_PER_BLOCK* 64];
-#ifdef F2FS_NO_HASH
+
 	cur = dedupe_info->dedupe_md;
-#endif
 	while(cur->ref)
 	{
 		if(likely(cur != dedupe_info->dedupe_md + dedupe_info->dedupe_block_count * DEDUPE_PER_BLOCK - 1))
@@ -318,36 +310,37 @@ void exit_dedupe_info(struct dedupe_info *dedupe_info)
 #endif
 }
 
-void f2fs_dedupe_reli_add1(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
-{
-	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
-	
-	while(cur->addr1 != 0 && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
-		cur++;
-	
-	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
-	{
-		memcpy(cur->hash, hash, dedupe_info->digest_len);
-		cur->addr1 = addr;
-		printk("dedupe_reli add1 successed\n");
-		return;
-	}
-	else printk("dedupe_reli is full\n");
-}
-void f2fs_dedupe_reli_add2(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
+void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr, int add_type)
 {
 	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
 
-	while(likely(memcmp(cur->hash, hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
-		cur++;
-	
-	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	switch(add_type)
 	{
-		cur->addr2 = addr;
-		printk("dedupe_reli add2 successed\n");
-		return;
+		case 1:
+			while(cur->addr1 != 0 && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+				cur++;
+	
+			if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+			{
+				memcpy(cur->hash, hash, dedupe_info->digest_len);
+				cur->addr1 = addr;
+				printk("dedupe_reli add1 successed\n");
+				return;
+			}
+			else printk("dedupe_reli is full\n");
+			break;
+		case 2:
+			while(likely(memcmp(cur->hash, hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+				cur++;
+	
+			if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+			{
+				cur->addr2 = addr;
+				printk("dedupe_reli add2 successed\n");
+				return;
+			}
+			printk("dedupe_reli hash is not found\n");
 	}
-	printk("dedupe_reli hash is not found\n");
 }
 
 int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type)
@@ -396,4 +389,19 @@ int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int de
 	return -3;
 }
 
+struct dedupe_reli *f2fs_dedupe_reli_search_by_hash(u8 hash[], struct dedupe_info *dedupe_info)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+
+	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+		cur++;
+
+	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	{
+		printk("dedupe_reli_search_by_hash successed\n");
+		return cur;
+	}
+	printk("dedupe_reli_search_by_hash not found\n");
+	return NULL;
+}
 

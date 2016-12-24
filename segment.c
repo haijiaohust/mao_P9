@@ -1371,6 +1371,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	struct sit_info *sit_i = SIT_I(sbi);
 	struct curseg_info *curseg;
 	bool direct_io = (type == CURSEG_DIRECT_IO);
+	int add_type = 0;
 	u8 hash[16];
 	struct dedupe* dedupe = NULL;
 	struct f2fs_io_info *fio = container_of(new_blkaddr, struct f2fs_io_info, blk_addr);
@@ -1428,23 +1429,14 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 			}
 		}
 
-		if(unlikely(dedupe->ref == 5))
+		if(unlikely(dedupe->ref == 5 || dedupe->ref == 10))
 		{
-			printk("write double\n");
+			if(dedupe->ref == 5)
+				add_type = 1;
+			if(dedupe->ref == 10)
+				add_type = 2;
 			*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
-			f2fs_dedupe_reli_add1(hash, &sbi->dedupe_info, *new_blkaddr);
-			sbi->dedupe_info.physical_blk_cnt++;
-			spin_lock(&sbi->stat_lock);
-			sbi->total_valid_block_count ++;
-			spin_unlock(&sbi->stat_lock);
-			spin_unlock(&sbi->dedupe_info.lock);
-			goto write_addr;
-		}
-		if(unlikely(dedupe->ref == 10))
-		{
-			printk("write triple\n");
-			*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
-			f2fs_dedupe_reli_add2(hash, &sbi->dedupe_info, *new_blkaddr);
+			f2fs_dedupe_reli_add(hash, &sbi->dedupe_info, *new_blkaddr, add_type);
 			sbi->dedupe_info.physical_blk_cnt++;
 			spin_lock(&sbi->stat_lock);
 			sbi->total_valid_block_count ++;

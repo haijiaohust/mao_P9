@@ -2,7 +2,6 @@
 #define _DEDUPE_H
 
 #define F2FS_BLOOM_FILTER 1
-//#define F2FS_NO_HASH 1
 #define F2FS_REVERSE_ADDR 1
 
 #define DEDUPE_SEGMENT_COUNT 6
@@ -54,13 +53,13 @@ struct dedupe_info
 #endif
 };
 
-extern void f2fs_dedupe_reli_add1(u8 hash[], struct dedupe_info *dedupe_info, block_t addr);
-extern void f2fs_dedupe_reli_add2(u8 hash[], struct dedupe_info *dedupe_info, block_t addr);
+extern void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr, int add_type);
 extern int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type);
-
+extern struct dedupe_reli *f2fs_dedupe_reli_search_by_hash(u8 hash[], struct dedupe_info *dedupe_info);
 
 extern int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_info);
 extern struct dedupe *f2fs_dedupe_search(u8 hash[], struct dedupe_info *dedupe_info);
+extern struct dedupe *f2fs_dedupe_search_by_addr(block_t addr, struct dedupe_info *dedupe_info);
 extern int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr);
 extern int init_dedupe_info(struct dedupe_info *dedupe_info);
 extern void init_f2fs_dedupe_bloom_filter(struct dedupe_info *dedupe_info);
