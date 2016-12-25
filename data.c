@@ -37,6 +37,7 @@ static void f2fs_read_end_io(struct bio *bio, int err)
 {
 	struct bio_vec *bvec;
 	int i;
+	int error;
 
 	if (f2fs_bio_encrypted(bio)) {
 		if (err) {
@@ -49,24 +50,36 @@ static void f2fs_read_end_io(struct bio *bio, int err)
 
 	bio_for_each_segment_all(bvec, bio, i) {
 		struct page *page = bvec->bv_page;
-		
+		if(FS_COMPR_FL&F2FS_I(page->mapping->host)->i_flags \
+			&& S_ISREG(page->mapping->host->i_mode) \
+			&& !(0x0000000010000000 & page->flags))
+		{
+			printk("f2fs read end io dedupe_reliabcd %d\n",i);
+			page->flags |= 0x0000000010000000;
+			f2fs_mpage_readpages(page->mapping, NULL, page, 1, 1);
+			continue;
+		}
+		else{
 		if (!err) {
+			printk("SetPageUptodate not err %d\n", i);
 			SetPageUptodate(page);
 			unlock_page(page);
 		}
 		else if(FS_COMPR_FL&F2FS_I(page->mapping->host)->i_flags \
 			&& S_ISREG(page->mapping->host->i_mode))
 		{
-			printk("f2fs read end io dedupe_reli\n");
+			printk("f2fs read end io dedupe_reli %d\n", i);
 			f2fs_mpage_readpages(page->mapping, NULL, page, 1, 1);
 			continue;
 		}
 		else 
 		{
+			printk("SetPageUptodate err %d\n", i);
 			ClearPageUptodate(page);
 			SetPageError(page);
 			unlock_page(page);
 		}
+	}
 	}
 	bio_put(bio);
 }
