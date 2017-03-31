@@ -42,9 +42,19 @@ struct dedupe_info
 #ifdef F2FS_REVERSE_ADDR
 	int *reverse_addr;
 #endif
+	struct rb_root dedupe_rb_root_hash;
+	struct rb_root dedupe_rb_root_addr;
 };
 
+struct dedupe_rb_node {
+	struct rb_node node_hash;
+	struct rb_node node_addr;
+	struct dedupe dedupe;
+};
 
+extern struct dedupe_rb_node *dedupe_rb_hash_insert(struct rb_root *root_hash, struct dedupe_rb_node *data);
+extern int dedupe_rb_delete(struct dedupe_info *dedupe_info, block_t addr);
+extern int dedupe_rb_addr_insert(struct rb_root *root_addr, struct dedupe_rb_node *data);
 extern int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_info);
 extern struct dedupe *f2fs_dedupe_search(u8 hash[], struct dedupe_info *dedupe_info);
 extern int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr);

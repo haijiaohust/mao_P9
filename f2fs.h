@@ -1832,12 +1832,12 @@ void update_meta_page(struct f2fs_sb_info *, void *, block_t);
 void write_meta_page(struct f2fs_sb_info *, struct page *);
 void write_node_page(unsigned int, struct f2fs_io_info *);
 void write_data_page(struct dnode_of_data *, struct f2fs_io_info *);
-void write_data_page_dedupe(struct dnode_of_data *, struct f2fs_io_info *);
+void write_data_page_dedupe(struct dnode_of_data *, struct f2fs_io_info *, int);
 void rewrite_data_page(struct f2fs_io_info *);
 void f2fs_replace_block(struct f2fs_sb_info *, struct dnode_of_data *,
 				block_t, block_t, unsigned char, bool);
 int allocate_data_block_dedupe(struct f2fs_sb_info *, struct page *,
-		block_t, block_t *, struct f2fs_summary *, int);
+		block_t, block_t *, struct f2fs_summary *, int, int);
 void allocate_data_block(struct f2fs_sb_info *, struct page *,
 		block_t, block_t *, struct f2fs_summary *, int);
 void f2fs_wait_on_page_writeback(struct page *, enum page_type, bool);
