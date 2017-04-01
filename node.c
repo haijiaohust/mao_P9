@@ -1929,30 +1929,6 @@ static void __flush_nat_entry_set(struct f2fs_sb_info *sbi,
 	kmem_cache_free(nat_entry_set_slab, set);
 }
 
-void flush_dedupe_entries(struct f2fs_sb_info *sbi)
-{
-	int i;
-
-	for(i=0; i< sbi->dedupe_info.dedupe_block_count; i++)
-	{
-		struct page *page = NULL;
-		u32 dedupe_base_blkaddr = le32_to_cpu(sbi->raw_super->nat_blkaddr) + ((le32_to_cpu(sbi->raw_super->segment_count_nat) - sbi->dedupe_info.dedupe_segment_count) << sbi->log_blocks_per_seg);
-		if(test_and_clear_bit(i, (long unsigned int *)sbi->dedupe_info.dedupe_md_dirty_bitmap))
-		{
-			dedupe_base_blkaddr+=i/512*1024;
-			if (!f2fs_test_bit(i, sbi->dedupe_info.dedupe_bitmap))
-			{
-				dedupe_base_blkaddr+=(1<< sbi->log_blocks_per_seg);
-			}
-			f2fs_change_bit(i, sbi->dedupe_info.dedupe_bitmap);
-			page = get_meta_page(sbi, dedupe_base_blkaddr + i%512);
-			memcpy(page_address(page),((char *)sbi->dedupe_info.dedupe_md + i*(DEDUPE_PER_BLOCK * sizeof(struct dedupe))) , DEDUPE_PER_BLOCK * sizeof(struct dedupe));
-			set_page_dirty(page);
-			f2fs_put_page(page, 1);
-		}
-	}
-}
-
 
 /*
  * This function is called during the checkpointing process.

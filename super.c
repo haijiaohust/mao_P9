@@ -547,7 +547,15 @@ static void f2fs_destroy_inode(struct inode *inode)
 
 static void f2fs_put_super(struct super_block *sb)
 {
+	struct rb_node *node;
+	pgoff_t dst_off;
+	int i=0;
+	struct page *dst_page = NULL;
+	void *dst_addr=NULL;
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+	struct cp_control cpc = {
+		.reason = CP_UMOUNT,
+	};
 
 	if (sbi->s_proc) {
 		remove_proc_entry("segment_info", sbi->s_proc);
@@ -559,19 +567,37 @@ static void f2fs_put_super(struct super_block *sb)
 
 	/* prevent remaining shrinker jobs */
 	mutex_lock(&sbi->umount_mutex);
+	dst_off = le32_to_cpu(sbi->raw_super->nat_blkaddr) + ((le32_to_cpu(sbi->raw_super->segment_count_nat) - sbi->dedupe_info.dedupe_segment_count) << sbi->log_blocks_per_seg);
+	for (node = rb_first(&sbi->dedupe_info.dedupe_rb_root_hash); node; node = rb_next(node))
+	{
+		i%=DEDUPE_PER_BLOCK;
+		if(unlikely(0==i))
+		{
+			if(dst_page)
+			{
+				set_page_dirty(dst_page);
+				f2fs_put_page(dst_page, 1);
+			}
 
-	/*
-	 * We don't need to do checkpoint when superblock is clean.
-	 * But, the previous checkpoint was not done by umount, it needs to do
-	 * clean checkpoint again.
-	 */
-	if (is_sbi_flag_set(sbi, SBI_IS_DIRTY) ||
-			!is_set_ckpt_flags(F2FS_CKPT(sbi), CP_UMOUNT_FLAG)) {
-		struct cp_control cpc = {
-			.reason = CP_UMOUNT,
-		};
-		write_checkpoint(sbi, &cpc);
+			dst_page = grab_meta_page(sbi, dst_off);
+			dst_addr = page_address(dst_page);
+			memset(dst_addr, 0, PAGE_CACHE_SIZE);
+			dst_off++;
+		}
+		if(likely(dst_addr))
+		{
+			memcpy(dst_addr+i*sizeof(struct dedupe), &rb_entry(node, struct dedupe_rb_node, node_hash)->dedupe, sizeof(struct dedupe));
+		}
+		i++;
 	}
+	if(dst_page)
+	{
+		set_page_dirty(dst_page);
+		f2fs_put_page(dst_page, 1);
+	}
+
+	write_checkpoint(sbi, &cpc);
+	exit_dedupe_info(&sbi->dedupe_info);
 
 	/* write_checkpoint can update stat informaion */
 	f2fs_destroy_stats(sbi);
@@ -597,7 +623,6 @@ static void f2fs_put_super(struct super_block *sb)
 	kobject_put(&sbi->s_kobj);
 	wait_for_completion(&sbi->s_kobj_unregister);
 
-	exit_dedupe_info(&sbi->dedupe_info);
 	sb->s_fs_info = NULL;
 	brelse(sbi->raw_super_buf);
 	kfree(sbi->raw_super);
@@ -1204,6 +1229,8 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 	bool retry = true, need_fsck = false;
 	char *options = NULL;
 	int recovery, i, j;
+	pgoff_t src_off;
+	int break_flag = 0;
 
 try_onemore:
 	err = -EINVAL;
@@ -1312,47 +1339,38 @@ try_onemore:
 	INIT_LIST_HEAD(&sbi->dir_inode_list);
 	spin_lock_init(&sbi->dir_inode_lock);
 
-#ifdef F2FS_REVERSE_ADDR
-	sbi->dedupe_info.reverse_addr = vmalloc(le64_to_cpu(raw_super->block_count)*sizeof(int));
-	memset(sbi->dedupe_info.reverse_addr, 0xff, le64_to_cpu(raw_super->block_count)*sizeof(int));
-#endif
-	sbi->dedupe_info.dedupe_block_count = (DEDUPE_SEGMENT_COUNT/2) << sbi->log_blocks_per_seg;
-	sbi->dedupe_info.dedupe_bitmap_size = sbi->dedupe_info.dedupe_block_count/8;
-	sbi->dedupe_info.dedupe_size = sbi->dedupe_info.dedupe_block_count * DEDUPE_PER_BLOCK * sizeof(struct dedupe);
-	sbi->dedupe_info.dedupe_bitmap = kmemdup(__bitmap_ptr(sbi, DEDUPE_BITMAP), sbi->dedupe_info.dedupe_bitmap_size, GFP_KERNEL);
+	sbi->dedupe_info.dedupe_block_count = DEDUPE_SEGMENT_COUNT << sbi->log_blocks_per_seg;
 	init_dedupe_info(&sbi->dedupe_info);
-	for(i=0; i<sbi->dedupe_info.dedupe_block_count; i++)
+	src_off = le32_to_cpu(sbi->raw_super->nat_blkaddr) + ((le32_to_cpu(sbi->raw_super->segment_count_nat) - sbi->dedupe_info.dedupe_segment_count) << sbi->log_blocks_per_seg);
+	for(i=0; i<sbi->dedupe_info.dedupe_block_count; i++,src_off++)
 	{
-		u32 dedupe_base_blkaddr = le32_to_cpu(sbi->raw_super->nat_blkaddr) + ((le32_to_cpu(sbi->raw_super->segment_count_nat) - sbi->dedupe_info.dedupe_segment_count) << sbi->log_blocks_per_seg);
-		struct dedupe *dedupe;
-		struct page *page = NULL;
-		dedupe_base_blkaddr+=i/512*1024;
-		if (f2fs_test_bit(i, sbi->dedupe_info.dedupe_bitmap))
-		{
-			dedupe_base_blkaddr+=(1<<sbi->log_blocks_per_seg);
-		}
-		page = get_meta_page(sbi, dedupe_base_blkaddr + i%512);
-		memcpy(((char *)sbi->dedupe_info.dedupe_md + i*(DEDUPE_PER_BLOCK * sizeof(struct dedupe))), page_address(page), DEDUPE_PER_BLOCK * sizeof(struct dedupe));
-		dedupe = (struct dedupe *)((char *)sbi->dedupe_info.dedupe_md + i*(DEDUPE_PER_BLOCK * sizeof(struct dedupe)));
+		struct page *src_page;
+		void *src_addr;
+		src_page = get_meta_page(sbi, src_off);
+		src_addr = page_address(src_page);
 		for(j=0; j<DEDUPE_PER_BLOCK; j++)
 		{
-			if((dedupe+j)->ref)
+			struct dedupe_rb_node *dedupe_rb_node;
+			if(((struct dedupe *)src_addr+j)->ref)
 			{
-				sbi->dedupe_info.logical_blk_cnt+=(dedupe+j)->ref;
+				sbi->dedupe_info.logical_blk_cnt+=((struct dedupe *)src_addr+j)->ref;
 				sbi->dedupe_info.physical_blk_cnt++;
-#ifdef F2FS_REVERSE_ADDR
-				sbi->dedupe_info.reverse_addr[(dedupe+j)->addr] = i * DEDUPE_PER_BLOCK + j;
-#endif
 			}
+			else
+			{
+				break_flag = 1;
+				break;
+			}
+			dedupe_rb_node = kzalloc(sizeof(struct dedupe_rb_node), GFP_KERNEL);
+			memcpy(&dedupe_rb_node->dedupe, src_addr+j*sizeof(struct dedupe), sizeof(struct dedupe));
+			dedupe_rb_hash_insert(&sbi->dedupe_info.dedupe_rb_root_hash, dedupe_rb_node);
+			dedupe_rb_addr_insert(&sbi->dedupe_info.dedupe_rb_root_addr, dedupe_rb_node);
 		}
-		f2fs_put_page(page, 1);
+		f2fs_put_page(src_page, 1);
+		if(break_flag) break;
 	}
-#ifdef F2FS_BLOOM_FILTER
-	init_f2fs_dedupe_bloom_filter(&sbi->dedupe_info);
-#endif
 
 	init_extent_cache_info(sbi);
-
 	init_ino_entry_info(sbi);
 
 	/* setup f2fs internal modules */
@@ -1522,6 +1540,7 @@ static void kill_f2fs_super(struct super_block *sb)
 {
 	if (sb->s_root)
 		set_sbi_flag(F2FS_SB(sb), SBI_IS_CLOSE);
+
 	kill_block_super(sb);
 }
 

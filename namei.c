@@ -69,10 +69,6 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 	{
 		F2FS_I(inode)->i_flags|=FS_COMPR_FL;
 	}
-	if(FS_UNRM_FL&F2FS_I(dir)->i_flags)
-	{
-		F2FS_I(inode)->i_flags|=FS_UNRM_FL;
-	}
 	f2fs_init_extent_tree(inode, NULL);
 
 	stat_inc_inline_xattr(inode);

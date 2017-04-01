@@ -1100,9 +1100,7 @@ int do_write_data_page(struct f2fs_io_info *fio)
 	} else {
 		if(FS_COMPR_FL&F2FS_I(inode)->i_flags && S_ISREG(inode->i_mode))
 		{
-			int in_mem = 0;
-			if(FS_UNRM_FL&F2FS_I(inode)->i_flags) in_mem = 1;
-			write_data_page_dedupe(&dn, fio, in_mem);
+			write_data_page_dedupe(&dn, fio);
 		}
 		else
 		{
