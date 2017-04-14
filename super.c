@@ -565,6 +565,7 @@ static void f2fs_put_super(struct super_block *sb)
 
 	stop_gc_thread(sbi);
 
+	printk("f2fs_put_super\n");
 	/* prevent remaining shrinker jobs */
 	mutex_lock(&sbi->umount_mutex);
 	dst_off = le32_to_cpu(sbi->raw_super->nat_blkaddr) + ((le32_to_cpu(sbi->raw_super->segment_count_nat) - sbi->dedupe_info.dedupe_segment_count) << sbi->log_blocks_per_seg);
@@ -809,6 +810,14 @@ static void default_options(struct f2fs_sb_info *sbi)
 
 static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 {
+	struct rb_node *node;
+	pgoff_t dst_off;
+	int i=0;
+	struct page *dst_page = NULL;
+	void *dst_addr=NULL;
+	struct cp_control cpc = {
+		.reason = CP_UMOUNT,
+	};
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
 	struct f2fs_mount_info org_mount_opt;
 	int err, active_logs;
@@ -816,7 +825,42 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 	bool need_stop_gc = false;
 	bool no_extent_cache = !test_opt(sbi, EXTENT_CACHE);
 
+	printk("f2fs_remount\n");
 	sync_filesystem(sb);
+
+	/* prevent remaining shrinker jobs */
+	mutex_lock(&sbi->umount_mutex);
+	dst_off = le32_to_cpu(sbi->raw_super->nat_blkaddr) + ((le32_to_cpu(sbi->raw_super->segment_count_nat) - sbi->dedupe_info.dedupe_segment_count) << sbi->log_blocks_per_seg);
+	for (node = rb_first(&sbi->dedupe_info.dedupe_rb_root_hash); node; node = rb_next(node))
+	{
+		i%=DEDUPE_PER_BLOCK;
+		if(unlikely(0==i))
+		{
+			if(dst_page)
+			{
+				set_page_dirty(dst_page);
+				f2fs_put_page(dst_page, 1);
+			}
+
+			dst_page = grab_meta_page(sbi, dst_off);
+			dst_addr = page_address(dst_page);
+			memset(dst_addr, 0, PAGE_CACHE_SIZE);
+			dst_off++;
+		}
+		if(likely(dst_addr))
+		{
+			memcpy(dst_addr+i*sizeof(struct dedupe), &rb_entry(node, struct dedupe_rb_node, node_hash)->dedupe, sizeof(struct dedupe));
+		}
+		i++;
+	}
+	if(dst_page)
+	{
+		set_page_dirty(dst_page);
+		f2fs_put_page(dst_page, 1);
+	}
+
+	write_checkpoint(sbi, &cpc);
+	mutex_unlock(&sbi->umount_mutex);
 
 	/*
 	 * Save the old mount options in case we

@@ -821,14 +821,12 @@ void refresh_sit_entry_dedupe(struct f2fs_sb_info *sbi, block_t old, block_t new
 		ret = dedupe_rb_delete(dedupe_info, old);
 		if (ret>0)
 		{
-			spin_unlock(&dedupe_info->lock);
 			locate_dirty_segment(sbi, GET_SEGNO(sbi, new));
 			return;
 		}
 		else
 		{
 			update_sit_entry(sbi, old, -1);
-			spin_unlock(&dedupe_info->lock);
 		}
 		if(0 == ret)
 		{
@@ -1392,6 +1390,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	dedupe_rb_node = kmalloc(sizeof(struct dedupe_rb_node), GFP_KERNEL);
 	dedupe_rb_node->dedupe.ref = 1;
 	memcpy(dedupe_rb_node->dedupe.hash, hash, sbi->dedupe_info.digest_len);
+	spin_lock(&sbi->dedupe_info.lock);
 	ret = dedupe_rb_hash_insert(&sbi->dedupe_info.dedupe_rb_root_hash, dedupe_rb_node);
 	sbi->dedupe_info.logical_blk_cnt++;
 	dedupe = &ret->dedupe;
@@ -1400,6 +1399,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 		*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 		dedupe->addr = *new_blkaddr;
 		dedupe_rb_addr_insert(&sbi->dedupe_info.dedupe_rb_root_addr, dedupe_rb_node);
+		spin_unlock(&sbi->dedupe_info.lock);
 		spin_lock(&sbi->stat_lock);
 		sbi->total_valid_block_count ++;
 		sbi->dedupe_info.physical_blk_cnt++;
@@ -1407,6 +1407,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	}
 	else
 	{
+		spin_unlock(&sbi->dedupe_info.lock);
 		kfree(dedupe_rb_node);
 		dedupe->ref++;
 		*new_blkaddr = dedupe->addr;
@@ -1414,15 +1415,8 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 		{
 			int ret;
 			ret = dedupe_rb_delete(&sbi->dedupe_info, old_blkaddr);
-			if (ret>0)
-			{
-				spin_unlock(&sbi->dedupe_info.lock);
-			}
-			else
-			{
+			if (ret<=0)
 				update_sit_entry(sbi, old_blkaddr, -1);
-				spin_unlock(&sbi->dedupe_info.lock);
-			}
 			if(0 == ret)
 			{
 				spin_lock(&sbi->stat_lock);
@@ -1430,8 +1424,6 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 				spin_unlock(&sbi->stat_lock);
 			}
 		}
-		else
-			spin_unlock(&sbi->dedupe_info.lock);
 		mutex_unlock(&sit_i->sentry_lock);
 		mutex_unlock(&curseg->curseg_mutex);
 		return 1;

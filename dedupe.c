@@ -83,8 +83,10 @@ int dedupe_rb_delete(struct dedupe_info *dedupe_info, block_t addr)
 	{
 		dedupe_info->logical_blk_cnt--;
 		if(!--dedupe_rb_node->dedupe.ref) {
+			spin_lock(&dedupe_info->lock);
 			rb_erase(&dedupe_rb_node->node_hash, root_hash);
 			rb_erase(&dedupe_rb_node->node_addr, root_addr);
+			spin_unlock(&dedupe_info->lock);
 			kfree(dedupe_rb_node);
 			dedupe_info->physical_blk_cnt--;
 			return 0;

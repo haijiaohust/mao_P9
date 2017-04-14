@@ -350,6 +350,7 @@ static int stat_show(struct seq_file *s, void *v)
 		seq_printf(s, "  - pblk_cnt: %u \n", si->sbi->dedupe_info.physical_blk_cnt);
 		if(si->sbi->dedupe_info.physical_blk_cnt)
 			seq_printf(s, "  - duprate: %u %%\n", (si->sbi->dedupe_info.logical_blk_cnt - si->sbi->dedupe_info.physical_blk_cnt) * 100 /si->sbi->dedupe_info.logical_blk_cnt);
+		else seq_printf(s, "  - duprate: 0 %%\n");
 	}
 	mutex_unlock(&f2fs_stat_mutex);
 	return 0;

@@ -487,14 +487,7 @@ int truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 			int ret;
 			ret = dedupe_rb_delete(dedupe_info, blkaddr);
 			if (ret>0)
-			{
-				spin_unlock(&dedupe_info->lock);
 				continue;
-			}
-			else
-			{
-				spin_unlock(&dedupe_info->lock);
-			}
 			if(0 == ret)
 			{
 				spin_lock(&sbi->stat_lock);
