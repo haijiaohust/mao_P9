@@ -1387,7 +1387,8 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 			!has_not_enough_free_secs(sbi, 0))
 	__allocate_new_segments(sbi, type);
 
-	dedupe_rb_node = kmalloc(sizeof(struct dedupe_rb_node), GFP_KERNEL);
+	dedupe_rb_node = dedupe_rb_node_alloc(&sbi->dedupe_info);
+	//dedupe_rb_node = kmalloc(sizeof(struct dedupe_rb_node), GFP_KERNEL);
 	dedupe_rb_node->dedupe.ref = 1;
 	memcpy(dedupe_rb_node->dedupe.hash, hash, sbi->dedupe_info.digest_len);
 	spin_lock(&sbi->dedupe_info.lock);
@@ -1407,8 +1408,9 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	}
 	else
 	{
+		dedupe_rb_node_free(&sbi->dedupe_info, dedupe_rb_node);
 		spin_unlock(&sbi->dedupe_info.lock);
-		kfree(dedupe_rb_node);
+		//kfree(dedupe_rb_node);
 		dedupe->ref++;
 		*new_blkaddr = dedupe->addr;
 		if (GET_SEGNO(sbi, old_blkaddr) != NULL_SEGNO)

@@ -86,8 +86,10 @@ int dedupe_rb_delete(struct dedupe_info *dedupe_info, block_t addr)
 			spin_lock(&dedupe_info->lock);
 			rb_erase(&dedupe_rb_node->node_hash, root_hash);
 			rb_erase(&dedupe_rb_node->node_addr, root_addr);
+			dedupe_rb_node->dedupe.ref = -1;
+			dedupe_rb_node_free(dedupe_info, dedupe_rb_node);
 			spin_unlock(&dedupe_info->lock);
-			kfree(dedupe_rb_node);
+			//kfree(dedupe_rb_node);
 			dedupe_info->physical_blk_cnt--;
 			return 0;
 		}
@@ -159,9 +161,65 @@ int f2fs_dedupe_O_log2(unsigned int x)
   return l + log_2[x];
 }
 
+struct dedupe_rb_node *dedupe_rb_node_alloc(struct dedupe_info *dedupe_info)
+{
+	int i,j;
+	struct dedupe_rb_node *t;
+
+	if(dedupe_info->dedupe_rb_node_count>0)
+	{
+		dedupe_info->dedupe_rb_node_count--;
+		for(i=dedupe_info->alloc_page_point; i< PAGE_COUNT;i++)
+		{
+			t = ((struct dedupe_rb_node *)dedupe_info->dedupe_rb_node_page_base[i]);
+			for(j=dedupe_info->alloc_point; j< DEDUPE_RB_PER_BLOCK; j++)
+			{
+				if(t[j].dedupe.ref == -1)
+				{
+					dedupe_info->alloc_page_point = i;
+					dedupe_info->alloc_point = j + 1;
+					return &t[j];
+				}
+			}
+			dedupe_info->alloc_point = 0;
+		}
+		dedupe_info->alloc_point = 0;
+		for(i=0; i<= dedupe_info->alloc_page_point;i++)
+		{
+			t = ((struct dedupe_rb_node *)dedupe_info->dedupe_rb_node_page_base[i]);
+			for(j=dedupe_info->alloc_point; j< DEDUPE_RB_PER_BLOCK; j++)
+			{
+				if(t[j].dedupe.ref == -1)
+				{
+					dedupe_info->alloc_page_point = i;
+					dedupe_info->alloc_point = j + 1;
+					return &t[j];
+				}
+			}
+		}
+	}
+	//printk("kmalloc\n");
+	t = kmalloc(sizeof(struct dedupe_rb_node), GFP_KERNEL);
+	t->free_flag = 1;
+	return t;
+}
+
+void dedupe_rb_node_free(struct dedupe_info *dedupe_info, struct dedupe_rb_node *dedupe_rb_node)
+{
+	if(unlikely(dedupe_rb_node->free_flag))
+	{
+		kfree(dedupe_rb_node);
+		return;
+	}
+	dedupe_info->dedupe_rb_node_count++;
+	dedupe_rb_node->dedupe.ref = -1;
+}
+
 int init_dedupe_info(struct dedupe_info *dedupe_info)
 {
 	int ret = 0;
+	int i, j;
+	struct dedupe_rb_node *t;
 	dedupe_info->digest_len = 16;
 	spin_lock_init(&dedupe_info->lock);
 	INIT_LIST_HEAD(&dedupe_info->queue);
@@ -170,11 +228,30 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 	dedupe_info->crypto_shash_descsize = crypto_shash_descsize(dedupe_info->tfm);
 	dedupe_info->dedupe_rb_root_hash = RB_ROOT;
 	dedupe_info->dedupe_rb_root_addr = RB_ROOT;
+	printk("sizeof(struct dedupe_rb_node):%lu PAGE_COUNT:%lu vmalloc:%lu\n",sizeof(struct dedupe_rb_node), PAGE_COUNT,PAGE_COUNT*sizeof(char *));
+	dedupe_info->dedupe_rb_node_page_base = vmalloc(PAGE_COUNT*sizeof(char *));
+	dedupe_info->alloc_page_point=0;
+	dedupe_info->alloc_point=0;
+	dedupe_info->free_page_point=0;
+	dedupe_info->free_point=0;
+	dedupe_info->dedupe_rb_node_count = DATA_SIZE*DEDUPE_PER_DATA_SIZE;
+	for(i=0;i<PAGE_COUNT;i++)
+	{
+		dedupe_info->dedupe_rb_node_page_base[i] = (char *)__get_free_page(GFP_KERNEL);
+		t = ((struct dedupe_rb_node *)dedupe_info->dedupe_rb_node_page_base[i]);
+		for(j=0; j< DEDUPE_RB_PER_BLOCK; j++)
+		{
+			t[j].dedupe.ref = -1;
+			t[j].free_flag = 0;
+		}
+	}
 	return ret;
 }
 
 void exit_dedupe_info(struct dedupe_info *dedupe_info)
 {
+	int i;
 	crypto_free_shash(dedupe_info->tfm);
+	for(i=0;i<PAGE_COUNT;i++) free_page((unsigned long) dedupe_info->dedupe_rb_node_page_base[i] );
 }
 

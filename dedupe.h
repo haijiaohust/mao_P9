@@ -4,6 +4,11 @@
 #define DEDUPE_SEGMENT_COUNT 24
 #define DEDUPE_PER_BLOCK (PAGE_CACHE_SIZE/sizeof(struct dedupe))
 
+#define DATA_SIZE 1
+#define DEDUPE_PER_DATA_SIZE (256*1024)
+#define DEDUPE_RB_PER_BLOCK (PAGE_CACHE_SIZE/sizeof(struct dedupe_rb_node))
+#define PAGE_COUNT (DATA_SIZE*(DEDUPE_PER_DATA_SIZE/DEDUPE_RB_PER_BLOCK + 1))
+
 typedef u32 block_t;
 
 struct dedupe
@@ -26,12 +31,19 @@ struct dedupe_info
 	unsigned int crypto_shash_descsize;
 	struct rb_root dedupe_rb_root_hash;
 	struct rb_root dedupe_rb_root_addr;
+	unsigned int alloc_page_point;
+	unsigned int alloc_point;
+	unsigned int free_page_point;
+	unsigned int free_point;
+	char **dedupe_rb_node_page_base;
+	int dedupe_rb_node_count;
 };
 
 struct dedupe_rb_node {
 	struct rb_node node_hash;
 	struct rb_node node_addr;
 	struct dedupe dedupe;
+	int free_flag;
 };
 
 extern struct dedupe_rb_node *dedupe_rb_hash_insert(struct rb_root *root_hash, struct dedupe_rb_node *data);
@@ -40,6 +52,8 @@ extern int dedupe_rb_addr_insert(struct rb_root *root_addr, struct dedupe_rb_nod
 extern int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_info);
 extern int init_dedupe_info(struct dedupe_info *dedupe_info);
 extern void exit_dedupe_info(struct dedupe_info *dedupe_info);
+extern struct dedupe_rb_node *dedupe_rb_node_alloc(struct dedupe_info *dedupe_info);
+extern void dedupe_rb_node_free(struct dedupe_info *dedupe_info, struct dedupe_rb_node *dedupe_rb_node);
 
 #endif
 
