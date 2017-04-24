@@ -1394,6 +1394,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	spin_lock(&sbi->dedupe_info.lock);
 	ret = dedupe_rb_hash_insert(&sbi->dedupe_info.dedupe_rb_root_hash, dedupe_rb_node);
 	sbi->dedupe_info.logical_blk_cnt++;
+	sbi->dedupe_info.dynamic_logical_blk_cnt++;
 	dedupe = &ret->dedupe;
 	if(ret == dedupe_rb_node)
 	{
@@ -1404,6 +1405,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 		spin_lock(&sbi->stat_lock);
 		sbi->total_valid_block_count ++;
 		sbi->dedupe_info.physical_blk_cnt++;
+		sbi->dedupe_info.dynamic_physical_blk_cnt++;
 		spin_unlock(&sbi->stat_lock);
 	}
 	else

@@ -235,6 +235,8 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 	dedupe_info->free_page_point=0;
 	dedupe_info->free_point=0;
 	dedupe_info->dedupe_rb_node_count = DATA_SIZE*DEDUPE_PER_DATA_SIZE;
+	dedupe_info->dynamic_logical_blk_cnt = 0;
+	dedupe_info->dynamic_physical_blk_cnt = 0;
 	for(i=0;i<PAGE_COUNT;i++)
 	{
 		dedupe_info->dedupe_rb_node_page_base[i] = (char *)__get_free_page(GFP_KERNEL);

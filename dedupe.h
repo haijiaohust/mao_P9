@@ -4,7 +4,7 @@
 #define DEDUPE_SEGMENT_COUNT 24
 #define DEDUPE_PER_BLOCK (PAGE_CACHE_SIZE/sizeof(struct dedupe))
 
-#define DATA_SIZE 1
+#define DATA_SIZE 10
 #define DEDUPE_PER_DATA_SIZE (256*1024)
 #define DEDUPE_RB_PER_BLOCK (PAGE_CACHE_SIZE/sizeof(struct dedupe_rb_node))
 #define PAGE_COUNT (DATA_SIZE*(DEDUPE_PER_DATA_SIZE/DEDUPE_RB_PER_BLOCK + 1))
@@ -23,6 +23,8 @@ struct dedupe_info
 	int digest_len;
 	unsigned int logical_blk_cnt;
 	unsigned int physical_blk_cnt;
+	unsigned int dynamic_logical_blk_cnt;
+	unsigned int dynamic_physical_blk_cnt;
 	unsigned int dedupe_segment_count;
 	unsigned int dedupe_block_count;
 	struct list_head queue;
