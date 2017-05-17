@@ -1,7 +1,7 @@
 #ifndef _DEDUPE_H
 #define _DEDUPE_H
 
-#define DEDUPE_SEGMENT_COUNT 24
+#define DEDUPE_SEGMENT_COUNT 98
 #define DEDUPE_PER_BLOCK (PAGE_CACHE_SIZE/sizeof(struct dedupe))
 
 #define DATA_SIZE 10
@@ -39,6 +39,12 @@ struct dedupe_info
 	unsigned int free_point;
 	char **dedupe_rb_node_page_base;
 	int dedupe_rb_node_count;
+
+	unsigned int bloom_filter_mask;
+	unsigned char *bloom_filter;
+	unsigned int bloom_filter_hash_fun_count;
+	unsigned int bloom_filter_exist;
+	unsigned int bloom_filter_noexist;
 };
 
 struct dedupe_rb_node {
@@ -56,6 +62,9 @@ extern int init_dedupe_info(struct dedupe_info *dedupe_info);
 extern void exit_dedupe_info(struct dedupe_info *dedupe_info);
 extern struct dedupe_rb_node *dedupe_rb_node_alloc(struct dedupe_info *dedupe_info);
 extern void dedupe_rb_node_free(struct dedupe_info *dedupe_info, struct dedupe_rb_node *dedupe_rb_node);
+extern int dedupe_bloom_filter(u8 hash[], struct dedupe_info* dedupe_info);
+extern int dedupe_bloom_filter_add(u8 hash[], struct dedupe_info* dedupe_info);
+extern int dedupe_bloom_filter_del(u8 hash[], struct dedupe_info* dedupe_info);
 
 #endif
 

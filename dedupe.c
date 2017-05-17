@@ -39,6 +39,36 @@ int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_
 	return ret;
 }
 
+int dedupe_bloom_filter(u8 hash[], struct dedupe_info* dedupe_info)
+{
+	int i;
+	unsigned int *pos = (unsigned int*)hash;
+	for(i = 0; i < dedupe_info->bloom_filter_hash_fun_count; i++){
+		if(!test_bit((*pos)&dedupe_info->bloom_filter_mask, (long unsigned int*)dedupe_info->bloom_filter))
+			return 1;
+		pos++;
+	}
+	return 0;
+}
+int dedupe_bloom_filter_add(u8 hash[], struct dedupe_info* dedupe_info)
+{
+	int i;
+	unsigned int *pos = (unsigned int*)hash;
+	if(dedupe_bloom_filter(hash, dedupe_info)){
+		dedupe_info->bloom_filter_noexist++;
+		for(i = 0; i < dedupe_info->bloom_filter_hash_fun_count; i++){
+			printk("bloom filter add:%d\t", test_bit((*pos)&dedupe_info->bloom_filter_mask, (long unsigned int*)dedupe_info->bloom_filter));
+			set_bit((*pos)&dedupe_info->bloom_filter_mask, (long unsigned int*)dedupe_info->bloom_filter);
+			printk("%d\n", test_bit((*pos)&dedupe_info->bloom_filter_mask, (long unsigned int*)dedupe_info->bloom_filter));
+			pos++;
+		}
+		return 0;
+	}
+	dedupe_info->bloom_filter_exist++;
+	return 0;
+}
+
+
 int dedupe_rb_cmp(u8 hash1[], u8 hash2[])
 {
 	int i;
@@ -143,24 +173,6 @@ int dedupe_rb_addr_insert(struct rb_root *root_addr, struct dedupe_rb_node *data
 	return 0;
 }
 
-
-int f2fs_dedupe_O_log2(unsigned int x)
-{
-  unsigned char log_2[256] = {
-    0,1,2,2,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
-    6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,
-    8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,
-    8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,
-    8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8
-  };
-  int l = -1;
-  while (x >= 256) { l += 8; x >>= 8; }
-  return l + log_2[x];
-}
-
 struct dedupe_rb_node *dedupe_rb_node_alloc(struct dedupe_info *dedupe_info)
 {
 	int i,j;
@@ -247,13 +259,24 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 			t[j].free_flag = 0;
 		}
 	}
+
+	dedupe_info->bloom_filter_exist = 0;
+	dedupe_info->bloom_filter_noexist = 0;
+	dedupe_info->bloom_filter_mask = ((1UL << (10 + 10)) - 1);
+	dedupe_info->bloom_filter = vmalloc(dedupe_info->bloom_filter_mask + 1);
+	memset(dedupe_info->bloom_filter, 0, dedupe_info->bloom_filter_mask + 1);
+	dedupe_info->bloom_filter_hash_fun_count = 4;
+	printk("DEDUPE_SEGMENT_COUNT=%d\tDEDUPE_PER_BLOCK=%d\n", DEDUPE_SEGMENT_COUNT, (int)DEDUPE_PER_BLOCK);
+    printk("bloom_filter=%x\n",(dedupe_info->bloom_filter_mask + 1));
 	return ret;
 }
 
 void exit_dedupe_info(struct dedupe_info *dedupe_info)
 {
 	int i;
+	vfree(dedupe_info->bloom_filter);
 	crypto_free_shash(dedupe_info->tfm);
-	for(i=0;i<PAGE_COUNT;i++) free_page((unsigned long) dedupe_info->dedupe_rb_node_page_base[i] );
+	for(i=0;i<PAGE_COUNT;i++) 
+		free_page((unsigned long) dedupe_info->dedupe_rb_node_page_base[i] );
 }
 

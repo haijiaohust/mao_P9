@@ -1393,6 +1393,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	memcpy(dedupe_rb_node->dedupe.hash, hash, sbi->dedupe_info.digest_len);
 	spin_lock(&sbi->dedupe_info.lock);
 	ret = dedupe_rb_hash_insert(&sbi->dedupe_info.dedupe_rb_root_hash, dedupe_rb_node);
+	dedupe_bloom_filter_add(hash, &sbi->dedupe_info);
 	sbi->dedupe_info.logical_blk_cnt++;
 	sbi->dedupe_info.dynamic_logical_blk_cnt++;
 	dedupe = &ret->dedupe;

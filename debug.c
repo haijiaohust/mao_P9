@@ -357,6 +357,9 @@ static int stat_show(struct seq_file *s, void *v)
 		if(si->sbi->dedupe_info.physical_blk_cnt)
 			seq_printf(s, "  - dynamic_duprate: %u %%\n", (si->sbi->dedupe_info.dynamic_logical_blk_cnt - si->sbi->dedupe_info.dynamic_physical_blk_cnt) * 100 /si->sbi->dedupe_info.dynamic_logical_blk_cnt);
 		else seq_printf(s, "  - dynamic_duprate: 0 %%\n");
+		seq_printf(s, "\nbloom filter:\n");
+		seq_printf(s, "  - bloom filter exist: %u \n", si->sbi->dedupe_info.bloom_filter_exist);
+		seq_printf(s, "  - bloom filter noexist: %u \n", si->sbi->dedupe_info.bloom_filter_noexist);
 	}
 	mutex_unlock(&f2fs_stat_mutex);
 	return 0;
