@@ -1023,6 +1023,10 @@ static void do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	get_sit_bitmap(sbi, __bitmap_ptr(sbi, SIT_BITMAP));
 	get_nat_bitmap(sbi, __bitmap_ptr(sbi, NAT_BITMAP));
 
+#ifdef DEDUPE_LIST_F2FS
+	memcpy(__bitmap_ptr(sbi, DEDUPE_BITMAP), sbi->dedupe_info.dedupe_bitmap, sbi->dedupe_info.dedupe_bitmap_size);
+#endif
+
 	crc32 = f2fs_crc32(ckpt, le32_to_cpu(ckpt->checksum_offset));
 	*((__le32 *)((unsigned char *)ckpt +
 				le32_to_cpu(ckpt->checksum_offset)))
@@ -1122,6 +1126,9 @@ void write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	f2fs_submit_merged_bio(sbi, DATA, WRITE);
 	f2fs_submit_merged_bio(sbi, NODE, WRITE);
 	f2fs_submit_merged_bio(sbi, META, WRITE);
+#ifdef DEDUPE_LIST_F2FS
+	flush_dedupe_entries(sbi);
+#endif
 
 	/*
 	 * update checkpoint pack index
@@ -1138,7 +1145,9 @@ void write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	/* unlock all the fs_lock[] in do_checkpoint() */
 	do_checkpoint(sbi, cpc);
 
+#ifdef DEDUPE_RB_TREE_F2FS
 	wait_on_all_pages_writeback(sbi);
+#endif
 
 	unblock_operations(sbi);
 	stat_inc_cp_count(sbi->stat_info);
