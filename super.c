@@ -581,7 +581,8 @@ static void f2fs_put_super(struct super_block *sb)
 				set_page_dirty(dst_page);
 				f2fs_put_page(dst_page, 1);
 			}
-
+			if(dst_off>=le32_to_cpu(sbi->raw_super->nat_blkaddr) + le32_to_cpu(sbi->raw_super->segment_count_nat)) 
+				goto end_write;
 			dst_page = grab_meta_page(sbi, dst_off);
 			dst_addr = page_address(dst_page);
 			memset(dst_addr, 0, PAGE_CACHE_SIZE);
@@ -597,8 +598,17 @@ static void f2fs_put_super(struct super_block *sb)
 	{
 		set_page_dirty(dst_page);
 		f2fs_put_page(dst_page, 1);
+		i%=DEDUPE_PER_BLOCK;
+		if(unlikely(0==i))
+		{
+			dst_page = grab_meta_page(sbi, dst_off);
+			dst_addr = page_address(dst_page);
+			memset(dst_addr, 0, PAGE_CACHE_SIZE);
+			set_page_dirty(dst_page);
+			f2fs_put_page(dst_page, 1);
+		}
 	}
-
+end_write:
 	write_checkpoint(sbi, &cpc);
 #endif
 #ifdef DEDUPE_LIST_F2FS
@@ -855,7 +865,8 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 				set_page_dirty(dst_page);
 				f2fs_put_page(dst_page, 1);
 			}
-
+			if(dst_off>=le32_to_cpu(sbi->raw_super->nat_blkaddr) + le32_to_cpu(sbi->raw_super->segment_count_nat)) 
+				goto end_write;
 			dst_page = grab_meta_page(sbi, dst_off);
 			dst_addr = page_address(dst_page);
 			memset(dst_addr, 0, PAGE_CACHE_SIZE);
@@ -871,8 +882,17 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 	{
 		set_page_dirty(dst_page);
 		f2fs_put_page(dst_page, 1);
+		i%=DEDUPE_PER_BLOCK;
+		if(unlikely(0==i))
+		{
+			dst_page = grab_meta_page(sbi, dst_off);
+			dst_addr = page_address(dst_page);
+			memset(dst_addr, 0, PAGE_CACHE_SIZE);
+			set_page_dirty(dst_page);
+			f2fs_put_page(dst_page, 1);
+		}
 	}
-
+end_write:
 	write_checkpoint(sbi, &cpc);
 	mutex_unlock(&sbi->umount_mutex);
 #endif

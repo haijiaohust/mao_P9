@@ -345,12 +345,18 @@ static int stat_show(struct seq_file *s, void *v)
 				si->page_mem >> 10);
 
 		/* dedupe info */
-		seq_printf(s, "\nDedupe:\n");
+		seq_printf(s, "\nDedupe static:\n");
 		seq_printf(s, "  - lblk_cnt: %u \n", si->sbi->dedupe_info.logical_blk_cnt);
 		seq_printf(s, "  - pblk_cnt: %u \n", si->sbi->dedupe_info.physical_blk_cnt);
 		if(si->sbi->dedupe_info.physical_blk_cnt)
 			seq_printf(s, "  - duprate: %u %%\n", (si->sbi->dedupe_info.logical_blk_cnt - si->sbi->dedupe_info.physical_blk_cnt) * 100 /si->sbi->dedupe_info.logical_blk_cnt);
 		else seq_printf(s, "  - duprate: 0 %%\n");
+		seq_printf(s, "\nDedupe dynamic:\n");
+		seq_printf(s, "  - dynamic_lblk_cnt: %u \n", si->sbi->dedupe_info.dynamic_logical_blk_cnt);
+		seq_printf(s, "  - dynamic_pblk_cnt: %u \n", si->sbi->dedupe_info.dynamic_physical_blk_cnt);
+		if(si->sbi->dedupe_info.physical_blk_cnt)
+			seq_printf(s, "  - dynamic_duprate: %u %%\n", (si->sbi->dedupe_info.dynamic_logical_blk_cnt - si->sbi->dedupe_info.dynamic_physical_blk_cnt) * 100 /si->sbi->dedupe_info.dynamic_logical_blk_cnt);
+		else seq_printf(s, "  - dynamic_duprate: 0 %%\n");
 	}
 	mutex_unlock(&f2fs_stat_mutex);
 	return 0;

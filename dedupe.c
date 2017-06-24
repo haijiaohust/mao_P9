@@ -162,6 +162,8 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 	dedupe_info->crypto_shash_descsize = crypto_shash_descsize(dedupe_info->tfm);
 	dedupe_info->dedupe_rb_root_hash = RB_ROOT;
 	dedupe_info->dedupe_rb_root_addr = RB_ROOT;
+	dedupe_info->dynamic_logical_blk_cnt = 0;
+	dedupe_info->dynamic_physical_blk_cnt = 0;
 	return ret;
 }
 
@@ -405,6 +407,8 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 	dedupe_info->last_delete_dedupe = dedupe_info->dedupe_md;
 	dedupe_info->tfm = crypto_alloc_shash("md5", 0, 0);
 	dedupe_info->crypto_shash_descsize = crypto_shash_descsize(dedupe_info->tfm);
+	dedupe_info->dynamic_logical_blk_cnt = 0;
+	dedupe_info->dynamic_physical_blk_cnt = 0;
 	return ret;
 }
 

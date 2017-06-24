@@ -24,6 +24,8 @@ struct dedupe_info
 	int digest_len;
 	unsigned int logical_blk_cnt;
 	unsigned int physical_blk_cnt;
+	unsigned int dynamic_logical_blk_cnt;
+	unsigned int dynamic_physical_blk_cnt;
 	unsigned int dedupe_segment_count;
 	unsigned int dedupe_block_count;
 	struct list_head queue;
@@ -58,6 +60,8 @@ struct dedupe_info
 #endif
 	unsigned int logical_blk_cnt;
 	unsigned int physical_blk_cnt;
+	unsigned int dynamic_logical_blk_cnt;
+	unsigned int dynamic_physical_blk_cnt;
 	struct dedupe* dedupe_md;
 	char *dedupe_md_dirty_bitmap;	/*bitmap for dirty dedupe blocks*/
 	char *dedupe_bitmap;				/*bitmap for dedupe checkpoint*/
