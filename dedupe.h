@@ -8,6 +8,7 @@
 
 #define DEDUPE_SEGMENT_COUNT 24
 #define DEDUPE_PER_BLOCK (PAGE_CACHE_SIZE/sizeof(struct dedupe))
+#define DEDUPE_RELI_NUM 100000
 
 typedef u32 block_t;
 
@@ -15,6 +16,13 @@ struct dedupe
 {
 	block_t addr;
 	int ref;
+	u8 hash[16];
+};
+
+struct dedupe_reli
+{
+	block_t addr1;
+	block_t addr2;
 	u8 hash[16];
 };
 
@@ -74,10 +82,15 @@ struct dedupe_info
 	spinlock_t lock;
 	struct crypto_shash *tfm;
 	unsigned int crypto_shash_descsize;
+	struct dedupe_reli *dedupe_reli;
 #ifdef F2FS_REVERSE_ADDR
 	int *reverse_addr;
 #endif
 };
+extern void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr, int add_type);
+extern int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type);
+extern struct dedupe_reli *f2fs_dedupe_reli_search_by_hash(u8 hash[], struct dedupe_info *dedupe_info);
+extern struct dedupe *f2fs_dedupe_search_by_addr(block_t addr, struct dedupe_info *dedupe_info);
 
 extern struct dedupe *f2fs_dedupe_search(u8 hash[], struct dedupe_info *dedupe_info);
 extern int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr);

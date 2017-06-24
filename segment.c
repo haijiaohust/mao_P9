@@ -1504,6 +1504,8 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	bool direct_io = (type == CURSEG_DIRECT_IO);
 	u8 hash[16];
 	struct dedupe* dedupe = NULL;
+	int add_type = 0;
+	struct f2fs_io_info *fio = container_of(new_blkaddr, struct f2fs_io_info, blk_addr);
 
 	type = direct_io ? CURSEG_WARM_DATA : type;
 
@@ -1526,6 +1528,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 		sbi->dedupe_info.dynamic_physical_blk_cnt++;
 		*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 		f2fs_dedupe_add(hash, &sbi->dedupe_info, *new_blkaddr);
+		fio->addr_dedup = *new_blkaddr;
 		spin_lock(&sbi->stat_lock);
 		sbi->total_valid_block_count ++;
 		spin_unlock(&sbi->stat_lock);
@@ -1536,7 +1539,8 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 		dedupe->ref++;
 		set_dedupe_dirty(&sbi->dedupe_info, dedupe);
 		*new_blkaddr = dedupe->addr;
-		spin_unlock(&sbi->dedupe_info.lock);
+		fio->addr_dedup = *new_blkaddr;
+		//spin_unlock(&sbi->dedupe_info.lock);
 
 		if (GET_SEGNO(sbi, old_blkaddr) != NULL_SEGNO)
 		{
@@ -1557,6 +1561,23 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 				spin_unlock(&sbi->stat_lock);
 			}
 		}
+		if(unlikely(dedupe->ref == 5 || dedupe->ref == 10))
+		{
+			if(dedupe->ref == 5)
+				add_type = 1;
+			if(dedupe->ref == 10)
+				add_type = 2;
+			*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
+			f2fs_dedupe_reli_add(hash, &sbi->dedupe_info, *new_blkaddr, add_type);
+			sbi->dedupe_info.dynamic_physical_blk_cnt++;
+			sbi->dedupe_info.physical_blk_cnt++;
+			spin_lock(&sbi->stat_lock);
+			sbi->total_valid_block_count ++;
+			spin_unlock(&sbi->stat_lock);
+			spin_unlock(&sbi->dedupe_info.lock);
+			goto write_addr;
+		}
+		spin_unlock(&sbi->dedupe_info.lock);
 
 		mutex_unlock(&sit_i->sentry_lock);
 		mutex_unlock(&curseg->curseg_mutex);
@@ -1567,6 +1588,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	 * because, this function updates a summary entry in the
 	 * current summary block.
 	 */
+write_addr:
 	__add_sum_entry(sbi, type, sum);
 
 	__refresh_next_blkoff(sbi, curseg);
@@ -1651,7 +1673,7 @@ void write_data_page_dedupe(struct dnode_of_data *dn, struct f2fs_io_info *fio)
 	get_node_info(sbi, dn->nid, &ni);
 	set_summary(&sum, dn->nid, dn->ofs_in_node, ni.version);
 	do_write_page_dedupe(&sum, fio);
-	dn->data_blkaddr = fio->blk_addr;
+	dn->data_blkaddr = fio->addr_dedup;
 }
 
 void write_data_page(struct dnode_of_data *dn, struct f2fs_io_info *fio)

@@ -377,7 +377,6 @@ int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
 		for(i=0;i<dedupe_info->bloom_filter_hash_fun_count;i++)
 		{
 			dedupe_info->bloom_filter[*(pos++)&dedupe_info->bloom_filter_mask]++;
-			//printk("add %d\n", *(pos++)&dedupe_info->bloom_filter_mask);
 		}
 #endif
 		set_dedupe_dirty(dedupe_info, cur);
@@ -385,6 +384,122 @@ int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
 		dedupe_info->physical_blk_cnt++;
 	}
 	return ret;
+}
+
+struct dedupe *f2fs_dedupe_search_by_addr(block_t addr, struct dedupe_info *dedupe_info)
+{
+	struct dedupe *cur, *c = dedupe_info->last_delete_dedupe;
+	
+	if(NEW_ADDR == addr) 
+		return NULL;
+
+#ifdef F2FS_REVERSE_ADDR
+	if(-1 == dedupe_info->reverse_addr[addr])
+		return NULL;
+	
+	cur = &dedupe_info->dedupe_md[dedupe_info->reverse_addr[addr]];
+	if(cur->ref)
+		return cur;
+	else
+		return NULL;
+#endif
+
+	for(cur=c; cur < dedupe_info->dedupe_md + dedupe_info->dedupe_block_count * DEDUPE_PER_BLOCK; cur++)
+	{
+		if(unlikely(cur->ref && addr == cur->addr))
+			return cur;
+	}
+	
+	for(cur = dedupe_info->dedupe_md; cur < c; cur++)
+	{
+		if(unlikely(cur->ref && addr == cur->addr))
+			return cur;
+	}
+	return NULL;
+}
+
+void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr, int add_type)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+
+	switch(add_type)
+	{
+		case 1:
+			while(cur->addr1 != 0 && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+				cur++;
+	
+			if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+			{
+				memcpy(cur->hash, hash, dedupe_info->digest_len);
+				cur->addr1 = addr;
+				return;
+			}
+			break;
+		case 2:
+			while(likely(memcmp(cur->hash, hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+				cur++;
+	
+			if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+			{
+				cur->addr2 = addr;
+				return;
+			}
+	}
+}
+
+int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+	struct f2fs_sb_info *sbi = container_of(dedupe_info, struct f2fs_sb_info, dedupe_info);
+
+	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+		cur++;
+
+	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	{
+		dedupe_info->physical_blk_cnt--;
+		switch(del_type)
+		{
+			case 1:
+				if(cur->addr2 != 0)
+					return -1;
+ 				else
+ 				{
+ 					invalidate_blocks(sbi, cur->addr1);
+					cur->addr1 = 0;
+					memset(cur->hash, 0, dedupe_info->digest_len);
+					return 0;
+ 				}
+			case 2:
+				if(cur->addr1 == 0)
+					return -1;
+				else
+				{
+					invalidate_blocks(sbi, cur->addr2);
+					cur->addr2 = 0;
+					return 0;
+				}
+		}
+	}
+	else
+	{
+		return -2;
+	}
+	return -3;
+}
+
+struct dedupe_reli *f2fs_dedupe_reli_search_by_hash(u8 hash[], struct dedupe_info *dedupe_info)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+
+	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+		cur++;
+
+	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	{
+		return cur;
+	}
+	return NULL;
 }
 
 int init_dedupe_info(struct dedupe_info *dedupe_info)
@@ -397,6 +512,8 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 	memset(dedupe_info->dedupe_md, 0, dedupe_info->dedupe_size);
 	dedupe_info->dedupe_md_dirty_bitmap = kzalloc(dedupe_info->dedupe_bitmap_size, GFP_KERNEL);
 	dedupe_info->dedupe_segment_count = DEDUPE_SEGMENT_COUNT;
+	dedupe_info->dedupe_reli = vmalloc(DEDUPE_RELI_NUM * sizeof(dedupe_info->dedupe_reli));
+	memset(dedupe_info->dedupe_reli, 0, DEDUPE_RELI_NUM * sizeof(dedupe_info->dedupe_reli));
 #ifdef F2FS_BLOOM_FILTER
 	dedupe_info->bloom_filter_mask = (1<<(f2fs_dedupe_O_log2(dedupe_info->dedupe_block_count) + 10)) -1;
 	dedupe_info->bloom_filter = vmalloc((dedupe_info->bloom_filter_mask + 1) * sizeof(unsigned int));
@@ -417,6 +534,7 @@ void exit_dedupe_info(struct dedupe_info *dedupe_info)
 	vfree(dedupe_info->dedupe_md);
 	kfree(dedupe_info->dedupe_md_dirty_bitmap);
 	kfree(dedupe_info->dedupe_bitmap);
+	vfree(dedupe_info->dedupe_reli);
 #ifdef F2FS_REVERSE_ADDR
 	vfree(dedupe_info->reverse_addr);
 #endif

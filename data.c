@@ -28,6 +28,10 @@
 #include "trace.h"
 #include <trace/events/f2fs.h>
 
+static int f2fs_mpage_readpages(struct address_space *mapping,
+			struct list_head *pages, struct page *page,
+			unsigned nr_pages, int again);
+
 static void f2fs_read_end_io(struct bio *bio, int err)
 {
 	struct bio_vec *bvec;
@@ -44,14 +48,30 @@ static void f2fs_read_end_io(struct bio *bio, int err)
 
 	bio_for_each_segment_all(bvec, bio, i) {
 		struct page *page = bvec->bv_page;
-
 		if (!err) {
 			SetPageUptodate(page);
-		} else {
+			unlock_page(page);
+		}
+		else if(FS_COMPR_FL&F2FS_I(page->mapping->host)->i_flags \
+			&& S_ISREG(page->mapping->host->i_mode))
+		{
+			if(FS_COMPR_FL&F2FS_I(page->mapping->host)->i_flags \
+				&& S_ISREG(page->mapping->host->i_mode) \
+				&& !(0x0000000010000000 & page->flags))
+			{
+				f2fs_mpage_readpages(page->mapping, NULL, page, 1, 2);
+				continue;
+			}
+			page->flags |= 0x0000000010000000;
+			f2fs_mpage_readpages(page->mapping, NULL, page, 1, 1);
+			continue;
+		}
+		else 
+		{
 			ClearPageUptodate(page);
 			SetPageError(page);
+			unlock_page(page);
 		}
-		unlock_page(page);
 	}
 	bio_put(bio);
 }
@@ -577,7 +597,7 @@ out:
  *     c. give the block addresses to blockdev
  */
 static int f2fs_map_blocks(struct inode *inode, struct f2fs_map_blocks *map,
-						int create, int flag)
+						int create, int flag, int again)
 {
 	unsigned int maxblocks = map->m_len;
 	struct dnode_of_data dn;
@@ -587,6 +607,8 @@ static int f2fs_map_blocks(struct inode *inode, struct f2fs_map_blocks *map,
 	int err = 0, ofs = 1;
 	struct extent_info ei;
 	bool allocated = false;
+	struct dedupe *dedupe = NULL;
+	struct dedupe_reli *dedupe_reli = NULL;
 
 	map->m_len = 0;
 	map->m_flags = 0;
@@ -647,6 +669,31 @@ static int f2fs_map_blocks(struct inode *inode, struct f2fs_map_blocks *map,
 		}
 	}
 
+		if(again)
+		{
+			dedupe = f2fs_dedupe_search_by_addr(dn.data_blkaddr, &sbi->dedupe_info);
+			if(!dedupe)
+			{
+				printk("f2fs_map_blocks find dedupe error\n");
+				goto not_found;
+			}
+			dedupe_reli = f2fs_dedupe_reli_search_by_hash(dedupe->hash, &sbi->dedupe_info);
+			if(!dedupe_reli)
+			{
+				printk("f2fs_map_blocks find dedupe error\n");
+				goto not_found;
+			}
+			switch(again)
+			{
+				case 1:
+					dn.data_blkaddr = dedupe_reli->addr1;
+					break;
+				case 2:
+					dn.data_blkaddr = dedupe_reli->addr2;
+			}
+		}
+		
+not_found:
 	map->m_flags |= F2FS_MAP_MAPPED;
 	map->m_pblk = dn.data_blkaddr;
 	map->m_len = 1;
@@ -733,7 +780,7 @@ static int __get_data_block(struct inode *inode, sector_t iblock,
 	map.m_lblk = iblock;
 	map.m_len = bh->b_size >> inode->i_blkbits;
 
-	ret = f2fs_map_blocks(inode, &map, create, flag);
+	ret = f2fs_map_blocks(inode, &map, create, flag, 0);
 	if (!ret) {
 		map_bh(bh, inode->i_sb, map.m_pblk);
 		bh->b_state = (bh->b_state & ~F2FS_MAP_FLAGS) | map.m_flags;
@@ -882,7 +929,7 @@ out:
  */
 static int f2fs_mpage_readpages(struct address_space *mapping,
 			struct list_head *pages, struct page *page,
-			unsigned nr_pages)
+			unsigned nr_pages, int again)
 {
 	struct bio *bio = NULL;
 	unsigned page_idx;
@@ -939,7 +986,7 @@ static int f2fs_mpage_readpages(struct address_space *mapping,
 			map.m_len = last_block - block_in_file;
 
 			if (f2fs_map_blocks(inode, &map, 0,
-							F2FS_GET_BLOCK_READ))
+							F2FS_GET_BLOCK_READ, again))
 				goto set_error_page;
 		}
 got_it:
@@ -1039,7 +1086,7 @@ static int f2fs_read_data_page(struct file *file, struct page *page)
 	if (f2fs_has_inline_data(inode))
 		ret = f2fs_read_inline_data(inode, page);
 	if (ret == -EAGAIN)
-		ret = f2fs_mpage_readpages(page->mapping, NULL, page, 1);
+		ret = f2fs_mpage_readpages(page->mapping, NULL, page, 1, 0);
 	return ret;
 }
 
@@ -1053,7 +1100,7 @@ static int f2fs_read_data_pages(struct file *file,
 	if (f2fs_has_inline_data(inode))
 		return 0;
 
-	return f2fs_mpage_readpages(mapping, pages, NULL, nr_pages);
+	return f2fs_mpage_readpages(mapping, pages, NULL, nr_pages, 0);
 }
 
 int do_write_data_page(struct f2fs_io_info *fio)
