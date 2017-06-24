@@ -1198,7 +1198,7 @@ static inline void *__bitmap_ptr(struct f2fs_sb_info *sbi, int flag)
 			case NAT_BITMAP:
 				offset = le32_to_cpu(ckpt->sit_ver_bitmap_bytesize);
 				break;
-#ifdef F2FS_LIST_F2FS
+#ifdef DEDUPE_LIST_F2FS
 			case DEDUPE_BITMAP:
 				offset = le32_to_cpu(ckpt->sit_ver_bitmap_bytesize) +  le32_to_cpu(ckpt->nat_ver_bitmap_bytesize) - sbi->dedupe_info.dedupe_bitmap_size;
 				break;
@@ -1812,7 +1812,6 @@ int build_node_manager(struct f2fs_sb_info *);
 void destroy_node_manager(struct f2fs_sb_info *);
 int __init create_node_manager_caches(void);
 void destroy_node_manager_caches(void);
-void flush_dedupe_entries(struct f2fs_sb_info *);
 #ifdef DEDUPE_LIST_F2FS
 void flush_dedupe_entries(struct f2fs_sb_info *);
 #endif
@@ -1833,9 +1832,6 @@ void clear_prefree_segments(struct f2fs_sb_info *, struct cp_control *);
 void release_discard_addrs(struct f2fs_sb_info *);
 bool discard_next_dnode(struct f2fs_sb_info *, block_t);
 int npages_for_summary_flush(struct f2fs_sb_info *, bool);
-void write_data_page_dedupe(struct dnode_of_data *, struct f2fs_io_info *);
-int allocate_data_block_dedupe(struct f2fs_sb_info *, struct page *,
-		block_t, block_t *, struct f2fs_summary *, int);
 void allocate_new_segments(struct f2fs_sb_info *);
 int f2fs_trim_fs(struct f2fs_sb_info *, struct fstrim_range *);
 struct page *get_sum_page(struct f2fs_sb_info *, unsigned int);

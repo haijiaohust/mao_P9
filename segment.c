@@ -1598,7 +1598,6 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 	f2fs_submit_page_mbio(fio);
 }
 
-#ifdef DEDUPE_RB_TREE_F2FS
 static void do_write_page_dedupe(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 {
 	int type = __get_segment_type(fio->page, fio->type);
@@ -1614,24 +1613,6 @@ static void do_write_page_dedupe(struct f2fs_summary *sum, struct f2fs_io_info *
 		f2fs_submit_page_mbio(fio);
 	}
 }
-#endif
-#ifdef DEDUPE_LIST_F2FS
-static void do_write_page_dedupe(struct f2fs_summary *sum, struct f2fs_io_info *fio)
-{
-	int type = __get_segment_type(fio->page, fio->type);
-
-	int ret = 0;
-
-	ret = allocate_data_block_dedupe(fio->sbi, fio->page, fio->blk_addr,
-						&fio->blk_addr, sum, type);
-	if(!ret)
-	{
-		set_page_writeback(fio->page);
-		/* writeout dirty page into bdev */
-		f2fs_submit_page_mbio(fio);
-	}
-}
-#endif
 
 void write_meta_page(struct f2fs_sb_info *sbi, struct page *page)
 {
@@ -1656,7 +1637,6 @@ void write_node_page(unsigned int nid, struct f2fs_io_info *fio)
 	do_write_page(&sum, fio);
 }
 
-#ifdef DEDUPE_RB_TREE_F2FS
 void write_data_page_dedupe(struct dnode_of_data *dn, struct f2fs_io_info *fio)
 {
 	struct f2fs_sb_info *sbi = fio->sbi;
@@ -1669,21 +1649,6 @@ void write_data_page_dedupe(struct dnode_of_data *dn, struct f2fs_io_info *fio)
 	do_write_page_dedupe(&sum, fio);
 	dn->data_blkaddr = fio->blk_addr;
 }
-#endif
-#ifdef DEDUPE_LIST_F2FS
-void write_data_page_dedupe(struct dnode_of_data *dn, struct f2fs_io_info *fio)
-{
-	struct f2fs_sb_info *sbi = fio->sbi;
-	struct f2fs_summary sum;
-	struct node_info ni;
-
-	f2fs_bug_on(sbi, dn->data_blkaddr == NULL_ADDR);
-	get_node_info(sbi, dn->nid, &ni);
-	set_summary(&sum, dn->nid, dn->ofs_in_node, ni.version);
-	do_write_page_dedupe(&sum, fio);
-	dn->data_blkaddr = fio->blk_addr;
-}
-#endif
 
 void write_data_page(struct dnode_of_data *dn, struct f2fs_io_info *fio)
 {
