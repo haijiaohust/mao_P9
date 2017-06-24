@@ -354,7 +354,7 @@ static int stat_show(struct seq_file *s, void *v)
 		seq_printf(s, "\nDedupe dynamic:\n");
 		seq_printf(s, "  - dynamic_lblk_cnt: %u \n", si->sbi->dedupe_info.dynamic_logical_blk_cnt);
 		seq_printf(s, "  - dynamic_pblk_cnt: %u \n", si->sbi->dedupe_info.dynamic_physical_blk_cnt);
-		if(si->sbi->dedupe_info.physical_blk_cnt)
+		if(si->sbi->dedupe_info.dynamic_physical_blk_cnt)
 			seq_printf(s, "  - dynamic_duprate: %u %%\n", (si->sbi->dedupe_info.dynamic_logical_blk_cnt - si->sbi->dedupe_info.dynamic_physical_blk_cnt) * 100 /si->sbi->dedupe_info.dynamic_logical_blk_cnt);
 		else seq_printf(s, "  - dynamic_duprate: 0 %%\n");
 	}
