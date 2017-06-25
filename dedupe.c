@@ -291,6 +291,10 @@ int f2fs_dedupe_delete_addr(block_t addr, struct dedupe_info *dedupe_info)
 			}
 			else
 			{
+				if(unlikely(cur->ref == 4))
+					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 1);
+				if(unlikely(cur->ref == 9))
+					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 2);
 				return cur->ref;
 			}
 		}
@@ -326,6 +330,10 @@ aa:
 			}
 			else
 			{
+				if(unlikely(cur->ref == 4))
+					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 1);
+				if(unlikely(cur->ref == 9))
+					f2fs_dedupe_reli_del_addr(cur->hash, dedupe_info, 2);
 				return cur->ref;
 			}
 		}
