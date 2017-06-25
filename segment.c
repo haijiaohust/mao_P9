@@ -1409,6 +1409,7 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	u8 hash[16];
 	struct dedupe* dedupe = NULL;
 	struct dedupe_rb_node *ret, *dedupe_rb_node;
+	int add_type = 0;
 
 	type = direct_io ? CURSEG_WARM_DATA : type;
 
@@ -1445,9 +1446,19 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	}
 	else
 	{
+		dedupe->ref++;
+		if(unlikely(dedupe->ref == 5 || dedupe->ref == 10))
+		{
+			if(dedupe->ref == 5)
+				add_type = 1;
+			if(dedupe->ref == 10)
+				add_type = 2;
+			f2fs_dedupe_reli_add(hash, &sbi->dedupe_info, dedupe->addr, add_type);
+			sbi->dedupe_info.dynamic_physical_blk_cnt++;
+			sbi->dedupe_info.physical_blk_cnt++;
+		}
 		spin_unlock(&sbi->dedupe_info.lock);
 		kfree(dedupe_rb_node);
-		dedupe->ref++;
 		*new_blkaddr = dedupe->addr;
 		if (GET_SEGNO(sbi, old_blkaddr) != NULL_SEGNO)
 		{

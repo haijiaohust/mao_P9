@@ -42,6 +42,7 @@ struct dedupe_info
 	unsigned int crypto_shash_descsize;
 	struct rb_root dedupe_rb_root_hash;
 	struct rb_root dedupe_rb_root_addr;
+	struct dedupe_reli *dedupe_reli;
 };
 
 struct dedupe_rb_node {
@@ -87,10 +88,6 @@ struct dedupe_info
 	int *reverse_addr;
 #endif
 };
-extern void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr, int add_type);
-extern int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type);
-extern struct dedupe_reli *f2fs_dedupe_reli_search_by_hash(u8 hash[], struct dedupe_info *dedupe_info);
-extern struct dedupe *f2fs_dedupe_search_by_addr(block_t addr, struct dedupe_info *dedupe_info);
 
 extern struct dedupe *f2fs_dedupe_search(u8 hash[], struct dedupe_info *dedupe_info);
 extern int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr);
@@ -99,9 +96,13 @@ extern void init_f2fs_dedupe_bloom_filter(struct dedupe_info *dedupe_info);
 #endif
 extern int f2fs_dedupe_delete_addr(block_t addr, struct dedupe_info *dedupe_info);
 extern void set_dedupe_dirty(struct dedupe_info *dedupe_info, struct dedupe *dedupe);
+extern struct dedupe *f2fs_dedupe_search_by_addr(block_t addr, struct dedupe_info *dedupe_info);
 extern int init_dedupe_info(struct dedupe_info *dedupe_info);
 extern void exit_dedupe_info(struct dedupe_info *dedupe_info);
 #endif
 extern int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_info);
+extern void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr, int add_type);
+extern int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type);
+extern struct dedupe_reli *f2fs_dedupe_reli_search_by_hash(u8 hash[], struct dedupe_info *dedupe_info);
 #endif
 

@@ -48,6 +48,89 @@ int f2fs_dedupe_O_log2(unsigned int x)
   return l + log_2[x];
 }
 
+void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr, int add_type)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+
+	switch(add_type)
+	{
+		case 1:
+			while(cur->addr1 != 0 && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+				cur++;
+	
+			if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+			{
+				memcpy(cur->hash, hash, dedupe_info->digest_len);
+				cur->addr1 = addr;
+				return;
+			}
+			break;
+		case 2:
+			while(likely(memcmp(cur->hash, hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+				cur++;
+	
+			if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+			{
+				cur->addr2 = addr;
+				return;
+			}
+	}
+}
+
+int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+
+	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+		cur++;
+
+	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	{
+		dedupe_info->physical_blk_cnt--;
+		switch(del_type)
+		{
+			case 1:
+				if(cur->addr2 != 0)
+					return -1;
+ 				else
+ 				{
+ 					//invalidate_blocks(sbi, cur->addr1);
+					cur->addr1 = 0;
+					memset(cur->hash, 0, dedupe_info->digest_len);
+					return 0;
+ 				}
+			case 2:
+				if(cur->addr1 == 0)
+					return -1;
+				else
+				{
+					//invalidate_blocks(sbi, cur->addr2);
+					cur->addr2 = 0;
+					return 0;
+				}
+		}
+	}
+	else
+	{
+		return -2;
+	}
+	return -3;
+}
+
+struct dedupe_reli *f2fs_dedupe_reli_search_by_hash(u8 hash[], struct dedupe_info *dedupe_info)
+{
+	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
+
+	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
+		cur++;
+
+	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
+	{
+		return cur;
+	}
+	return NULL;
+}
+
 #ifdef DEDUPE_RB_TREE_F2FS
 int dedupe_rb_cmp(u8 hash1[], u8 hash2[])
 {
@@ -101,8 +184,13 @@ int dedupe_rb_delete(struct dedupe_info *dedupe_info, block_t addr)
 			dedupe_info->physical_blk_cnt--;
 			return 0;
 		}
-		else
+		else{
+			if(unlikely(dedupe_rb_node->dedupe.ref == 4))
+				f2fs_dedupe_reli_del_addr(dedupe_rb_node->dedupe.hash, dedupe_info, 1);
+			if(unlikely(dedupe_rb_node->dedupe.ref == 9))
+				f2fs_dedupe_reli_del_addr(dedupe_rb_node->dedupe.hash, dedupe_info, 2);
 			return dedupe_rb_node->dedupe.ref;
+		}
 	}
 	else return -1;
 }
@@ -164,11 +252,14 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 	dedupe_info->dedupe_rb_root_addr = RB_ROOT;
 	dedupe_info->dynamic_logical_blk_cnt = 0;
 	dedupe_info->dynamic_physical_blk_cnt = 0;
+	dedupe_info->dedupe_reli = vmalloc(DEDUPE_RELI_NUM * sizeof(struct dedupe_reli));
+	memset(dedupe_info->dedupe_reli, 0, DEDUPE_RELI_NUM * sizeof(struct dedupe_reli));
 	return ret;
 }
 
 void exit_dedupe_info(struct dedupe_info *dedupe_info)
 {
+	vfree(dedupe_info->dedupe_reli);
 	crypto_free_shash(dedupe_info->tfm);
 }
 #endif
@@ -423,89 +514,6 @@ struct dedupe *f2fs_dedupe_search_by_addr(block_t addr, struct dedupe_info *dedu
 	{
 		if(unlikely(cur->ref && addr == cur->addr))
 			return cur;
-	}
-	return NULL;
-}
-
-void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr, int add_type)
-{
-	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
-
-	switch(add_type)
-	{
-		case 1:
-			while(cur->addr1 != 0 && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
-				cur++;
-	
-			if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
-			{
-				memcpy(cur->hash, hash, dedupe_info->digest_len);
-				cur->addr1 = addr;
-				return;
-			}
-			break;
-		case 2:
-			while(likely(memcmp(cur->hash, hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
-				cur++;
-	
-			if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
-			{
-				cur->addr2 = addr;
-				return;
-			}
-	}
-}
-
-int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type)
-{
-	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
-
-	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
-		cur++;
-
-	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
-	{
-		dedupe_info->physical_blk_cnt--;
-		switch(del_type)
-		{
-			case 1:
-				if(cur->addr2 != 0)
-					return -1;
- 				else
- 				{
- 					//invalidate_blocks(sbi, cur->addr1);
-					cur->addr1 = 0;
-					memset(cur->hash, 0, dedupe_info->digest_len);
-					return 0;
- 				}
-			case 2:
-				if(cur->addr1 == 0)
-					return -1;
-				else
-				{
-					//invalidate_blocks(sbi, cur->addr2);
-					cur->addr2 = 0;
-					return 0;
-				}
-		}
-	}
-	else
-	{
-		return -2;
-	}
-	return -3;
-}
-
-struct dedupe_reli *f2fs_dedupe_reli_search_by_hash(u8 hash[], struct dedupe_info *dedupe_info)
-{
-	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
-
-	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
-		cur++;
-
-	if(likely(cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM))
-	{
-		return cur;
 	}
 	return NULL;
 }
