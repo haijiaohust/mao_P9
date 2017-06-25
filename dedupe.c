@@ -385,6 +385,7 @@ int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
 		for(i=0;i<dedupe_info->bloom_filter_hash_fun_count;i++)
 		{
 			dedupe_info->bloom_filter[*(pos++)&dedupe_info->bloom_filter_mask]++;
+			//printk("add %d\n", *(pos++)&dedupe_info->bloom_filter_mask);
 		}
 #endif
 		set_dedupe_dirty(dedupe_info, cur);
@@ -458,7 +459,6 @@ void f2fs_dedupe_reli_add(u8 hash[], struct dedupe_info *dedupe_info, block_t ad
 int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int del_type)
 {
 	struct dedupe_reli *cur = dedupe_info->dedupe_reli;
-	struct f2fs_sb_info *sbi = container_of(dedupe_info, struct f2fs_sb_info, dedupe_info);
 
 	while(memcmp(hash, cur->hash, dedupe_info->digest_len) && cur < dedupe_info->dedupe_reli + DEDUPE_RELI_NUM)
 		cur++;
@@ -473,7 +473,7 @@ int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int de
 					return -1;
  				else
  				{
- 					invalidate_blocks(sbi, cur->addr1);
+ 					//invalidate_blocks(sbi, cur->addr1);
 					cur->addr1 = 0;
 					memset(cur->hash, 0, dedupe_info->digest_len);
 					return 0;
@@ -483,7 +483,7 @@ int f2fs_dedupe_reli_del_addr(u8 hash[], struct dedupe_info *dedupe_info, int de
 					return -1;
 				else
 				{
-					invalidate_blocks(sbi, cur->addr2);
+					//invalidate_blocks(sbi, cur->addr2);
 					cur->addr2 = 0;
 					return 0;
 				}
@@ -520,8 +520,8 @@ int init_dedupe_info(struct dedupe_info *dedupe_info)
 	memset(dedupe_info->dedupe_md, 0, dedupe_info->dedupe_size);
 	dedupe_info->dedupe_md_dirty_bitmap = kzalloc(dedupe_info->dedupe_bitmap_size, GFP_KERNEL);
 	dedupe_info->dedupe_segment_count = DEDUPE_SEGMENT_COUNT;
-	dedupe_info->dedupe_reli = vmalloc(DEDUPE_RELI_NUM * sizeof(dedupe_info->dedupe_reli));
-	memset(dedupe_info->dedupe_reli, 0, DEDUPE_RELI_NUM * sizeof(dedupe_info->dedupe_reli));
+	dedupe_info->dedupe_reli = vmalloc(DEDUPE_RELI_NUM * sizeof(struct dedupe_reli));
+	memset(dedupe_info->dedupe_reli, 0, DEDUPE_RELI_NUM * sizeof(struct dedupe_reli));
 #ifdef F2FS_BLOOM_FILTER
 	dedupe_info->bloom_filter_mask = (1<<(f2fs_dedupe_O_log2(dedupe_info->dedupe_block_count) + 10)) -1;
 	dedupe_info->bloom_filter = vmalloc((dedupe_info->bloom_filter_mask + 1) * sizeof(unsigned int));

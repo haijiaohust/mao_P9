@@ -8,7 +8,7 @@
 
 #define DEDUPE_SEGMENT_COUNT 24
 #define DEDUPE_PER_BLOCK (PAGE_CACHE_SIZE/sizeof(struct dedupe))
-#define DEDUPE_RELI_NUM 100000
+#define DEDUPE_RELI_NUM 10000
 
 typedef u32 block_t;
 
