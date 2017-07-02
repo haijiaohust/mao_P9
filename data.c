@@ -1097,7 +1097,9 @@ int do_write_data_page(struct f2fs_io_info *fio)
 		set_inode_flag(F2FS_I(inode), FI_UPDATE_WRITE);
 		trace_f2fs_do_write_data_page(page, IPU);
 	} else {
-		write_data_page(&dn, fio);
+		if(FS_COMPR_FL&F2FS_I(inode)->i_flags && S_ISREG(inode->i_mode))
+			write_data_page_dedupe(&dn, fio);
+		else write_data_page(&dn, fio);
 		set_data_blkaddr(&dn);
 		f2fs_update_extent_cache(&dn);
 		trace_f2fs_do_write_data_page(page, OPU);

@@ -1330,6 +1330,90 @@ void allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	mutex_unlock(&curseg->curseg_mutex);
 }
 
+void allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
+		block_t old_blkaddr, block_t *new_blkaddr,
+		struct f2fs_summary *sum, int type)
+{
+	struct sit_info *sit_i = SIT_I(sbi);
+	struct curseg_info *curseg;
+	bool direct_io = (type == CURSEG_DIRECT_IO);
+	u8 hash[16];
+	struct dedupe_btree_search_result result = {
+		.addr = NULL,
+		.seq = -1,
+	};
+
+	type = direct_io ? CURSEG_WARM_DATA : type;
+
+	curseg = CURSEG_I(sbi, type);
+
+	f2fs_dedupe_calc_hash(page, hash, &sbi->dedupe_info);
+
+	mutex_lock(&curseg->curseg_mutex);
+	mutex_lock(&sit_i->sentry_lock);
+
+	/* direct_io'ed data is aligned to the segment for better performance */
+	if (direct_io && curseg->next_blkoff &&
+				!has_not_enough_free_secs(sbi, 0))
+		__allocate_new_segments(sbi, type);
+
+	*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
+	spin_lock(&sbi->dedupe_info.dedupe_lock);
+	result = dedupe_btree_search_hash(&sbi->dedupe_info, hash, 0);
+	if(result.seq == -1){
+		dedupe_btree_insert_hash(&sbi->dedupe_info, hash, *new_blkaddr);
+	}
+	spin_unlock(&sbi->dedupe_info.dedupe_lock);
+#ifdef DEBUG_BTREE
+	if(result.addr)
+		print_hash(result.addr->dedupe[result.seq].hash);
+	if(!sbi->dedupe_info.btree_root){
+		printk(KERN_INFO "alloc_dedupe: 1\n");
+		if(!sbi->dedupe_info.btree_root->root){
+			printk(KERN_INFO "alloc_dedupe: 10\n");
+		}
+	}
+#endif
+
+	/*
+	 * __add_sum_entry should be resided under the curseg_mutex
+	 * because, this function updates a summary entry in the
+	 * current summary block.
+	 */
+	__add_sum_entry(sbi, type, sum);
+
+	__refresh_next_blkoff(sbi, curseg);
+
+	stat_inc_block_count(sbi, curseg);
+
+	if (!__has_curseg_space(sbi, type))
+		sit_i->s_ops->allocate_segment(sbi, type, false);
+	/*
+	 * SIT information should be updated before segment allocation,
+	 * since SSR needs latest valid block information.
+	 */
+	refresh_sit_entry(sbi, old_blkaddr, *new_blkaddr);
+
+	mutex_unlock(&sit_i->sentry_lock);
+
+	if (page && IS_NODESEG(type))
+		fill_node_footer_blkaddr(page, NEXT_FREE_BLKADDR(sbi, curseg));
+
+	mutex_unlock(&curseg->curseg_mutex);
+}
+
+static void do_write_page_dedupe(struct f2fs_summary *sum, struct f2fs_io_info *fio)
+{
+	int type = __get_segment_type(fio->page, fio->type);
+
+	allocate_data_block_dedupe(fio->sbi, fio->page, fio->blk_addr,
+					&fio->blk_addr, sum, type);
+
+	/* writeout dirty page into bdev */
+	f2fs_submit_page_mbio(fio);
+}
+
+
 static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 {
 	int type = __get_segment_type(fio->page, fio->type);
@@ -1363,6 +1447,20 @@ void write_node_page(unsigned int nid, struct f2fs_io_info *fio)
 	set_summary(&sum, nid, 0, 0);
 	do_write_page(&sum, fio);
 }
+
+void write_data_page_dedupe(struct dnode_of_data *dn, struct f2fs_io_info *fio)
+{
+	struct f2fs_sb_info *sbi = fio->sbi;
+	struct f2fs_summary sum;
+	struct node_info ni;
+
+	f2fs_bug_on(sbi, dn->data_blkaddr == NULL_ADDR);
+	get_node_info(sbi, dn->nid, &ni);
+	set_summary(&sum, dn->nid, dn->ofs_in_node, ni.version);
+	do_write_page_dedupe(&sum, fio);
+	dn->data_blkaddr = fio->blk_addr;
+}
+
 
 void write_data_page(struct dnode_of_data *dn, struct f2fs_io_info *fio)
 {

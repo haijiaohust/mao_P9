@@ -21,6 +21,7 @@
 #include <linux/sched.h>
 #include <linux/vmalloc.h>
 #include <linux/bio.h>
+#include "dedupe.h"
 
 #ifdef CONFIG_HUAWEI_F2FS_DSM
 #include <dsm/dsm_pub.h>
@@ -852,6 +853,7 @@ struct f2fs_sb_info {
 	struct list_head s_list;
 	struct mutex umount_mutex;
 	unsigned int shrinker_run_no;
+	struct dedupe_info dedupe_info;
 };
 
 /*
@@ -1810,6 +1812,7 @@ void update_meta_page(struct f2fs_sb_info *, void *, block_t);
 void write_meta_page(struct f2fs_sb_info *, struct page *);
 void write_node_page(unsigned int, struct f2fs_io_info *);
 void write_data_page(struct dnode_of_data *, struct f2fs_io_info *);
+void write_data_page_dedupe(struct dnode_of_data *, struct f2fs_io_info *);
 void rewrite_data_page(struct f2fs_io_info *);
 void f2fs_replace_block(struct f2fs_sb_info *, struct dnode_of_data *,
 				block_t, block_t, unsigned char, bool);

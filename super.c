@@ -31,6 +31,7 @@
 #include "xattr.h"
 #include "gc.h"
 #include "trace.h"
+#include "dedupe.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/f2fs.h>
@@ -597,6 +598,7 @@ static void f2fs_put_super(struct super_block *sb)
 	kobject_put(&sbi->s_kobj);
 	wait_for_completion(&sbi->s_kobj_unregister);
 
+	exit_dedupe_info(&sbi->dedupe_info);
 	sb->s_fs_info = NULL;
 	brelse(sbi->raw_super_buf);
 	kfree(sbi->raw_super);
@@ -1311,6 +1313,8 @@ try_onemore:
 	sbi->alloc_valid_block_count = 0;
 	INIT_LIST_HEAD(&sbi->dir_inode_list);
 	spin_lock_init(&sbi->dir_inode_lock);
+
+	init_dedupe_info(&sbi->dedupe_info);
 
 	init_extent_cache_info(sbi);
 
